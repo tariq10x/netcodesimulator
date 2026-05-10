@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use NetcodeSim in academic work, please cite it."
+type: software
+title: "NetcodeSim 3D"
+authors:
+  - name: "NetcodeSim Contributors"
+repository-code: "https://github.com/tariq10x/netcodesimulator"
+abstract: "A local-first educational FPS networking sandbox for studying server authority, client prediction, reconciliation, interpolation, lag compensation, latency, and packet loss."
+keywords:
+  - multiplayer networking
+  - client prediction
+  - server authority
+  - lag compensation
+  - educational software
+license: MIT

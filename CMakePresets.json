@@ -1,0 +1,174 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI",
+      "description": "Debug build used by continuous integration with project warnings promoted to errors.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "NETCODESIM_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "displayName": "CI (Linux)",
+      "description": "Linux CI build using normal system packages and the CMake raylib fallback when needed.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ci-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "NETCODESIM_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "ci-windows",
+      "displayName": "CI (Windows)",
+      "description": "Windows CI build using CMake, Ninja, MSVC, and the CMake raylib fallback.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ci-windows",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "NETCODESIM_USE_SYSTEM_RAYLIB": "OFF",
+        "NETCODESIM_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "dev-tidy",
+      "displayName": "Development Static Analysis",
+      "description": "Runs clang-tidy through the CMake build graph using the repository .clang-tidy configuration.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-tidy",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "OFF",
+        "NETCODESIM_WARNINGS_AS_ERRORS": "ON",
+        "NETCODESIM_ENABLE_CLANG_TIDY": "ON",
+        "NETCODESIM_CLANG_TIDY_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "dev-sanitize",
+      "displayName": "Development Sanitizers",
+      "description": "Builds and tests with AddressSanitizer and UndefinedBehaviorSanitizer enabled.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-sanitize",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON",
+        "NETCODESIM_WARNINGS_AS_ERRORS": "ON",
+        "NETCODESIM_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci"
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux"
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows"
+    },
+    {
+      "name": "dev-tidy",
+      "configurePreset": "dev-tidy"
+    },
+    {
+      "name": "dev-sanitize",
+      "configurePreset": "dev-sanitize"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dev-sanitize",
+      "configurePreset": "dev-sanitize",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

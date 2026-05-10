@@ -1,0 +1,58 @@
+# Build directory
+build/
+build-*/
+dist/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Local agent/workflow artifacts
+/logexports/
+/.netcodesim/*
+!/.netcodesim/levels/
+/.netcodesim/levels/*
+!/.netcodesim/levels/level_1.json
+!/.netcodesim/levels/level_2.json
+!/.netcodesim/levels/level_3.json
+/.agent/
+/.claude/
+/.sourcedive/
+/agent/
+/agent_tools/
+/agent_build.sh
+/agent_run.sh
+/AGENTS.md
+/prompt_packs/
+
+# Internal planning/spec artifacts
+/*_req.md
+/full_spec.md
+/raw_spec.md
+/tasks.md
+/release_prep_*.md
+
+# macOS
+.DS_Store
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Executables
+netcodesim
+*.exe
+*.out
+*.app

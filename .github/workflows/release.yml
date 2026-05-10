@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-release:
+    name: macOS release artifact
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: brew install cmake raylib
+
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Build
+        run: cmake --build --preset release --parallel --target netcodesim
+
+      - name: Package
+        run: |
+          set -euo pipefail
+
+          short_sha="$(git rev-parse --short HEAD)"
+          package_name="netcodesim-macos-${short_sha}"
+          package_root="dist/${package_name}"
+
+          rm -rf dist
+          mkdir -p "${package_root}"
+
+          cp build-release/netcodesim "${package_root}/"
+          cp -R build-release/assets "${package_root}/assets"
+          cp README.md LICENSE THIRD_PARTY_NOTICES.md "${package_root}/"
+
+          tar -C dist -czf "dist/${package_name}.tar.gz" "${package_name}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: netcodesim-macos
+          path: dist/netcodesim-macos-*.tar.gz
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/netcodesim-macos-*.tar.gz --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/netcodesim-macos-*.tar.gz \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
