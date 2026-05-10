@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-build-test:
+    name: macOS build and tests
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: brew install cmake raylib
+
+      - name: Configure
+        run: cmake --preset ci
+
+      - name: Build
+        run: cmake --build --preset ci --parallel
+
+      - name: Test
+        run: ctest --preset ci
+
+  linux-build-test:
+    name: Linux build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            git \
+            libasound2-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            ninja-build \
+            pkg-config \
+            xvfb
+
+      - name: Configure
+        run: cmake --preset ci-linux
+
+      - name: Build
+        run: cmake --build --preset ci-linux --parallel
+
+      - name: Test
+        run: xvfb-run --auto-servernum ctest --preset ci-linux
+
+  windows-build-test:
+    name: Windows build and tests
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        shell: pwsh
+        run: cmake --preset ci-windows
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build --preset ci-windows --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --preset ci-windows
+
+  static-analysis:
+    name: clang-tidy
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: brew install cmake raylib llvm
+
+      - name: Add LLVM tools to PATH
+        run: echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      - name: Configure
+        run: cmake --preset dev-tidy
+
+      - name: Analyze
+        run: cmake --build --preset dev-tidy --parallel
+
+  sanitizers:
+    name: ASan and UBSan
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: brew install cmake raylib
+
+      - name: Configure
+        run: cmake --preset dev-sanitize
+
+      - name: Build
+        run: cmake --build --preset dev-sanitize --parallel
+
+      - name: Test
+        run: ctest --preset dev-sanitize

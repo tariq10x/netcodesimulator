@@ -1,0 +1,41 @@
+# Build directory
+build/
+build-*/
+dist/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local application data
+/logexports/
+/.netcodesim/*
+!/.netcodesim/levels/
+/.netcodesim/levels/*
+!/.netcodesim/levels/level_1.json
+!/.netcodesim/levels/level_2.json
+!/.netcodesim/levels/level_3.json
+
+# macOS
+.DS_Store
+
+# Compiled objects
+*.o
+*.a
+*.so
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Executables
+netcodesim
+*.exe
+*.out
+*.app
