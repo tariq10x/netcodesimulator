@@ -12,7 +12,7 @@ On macOS:
 brew install cmake raylib
 ```
 
-On Linux:
+On Debian/Ubuntu and derivatives:
 
 ```bash
 sudo apt-get update
