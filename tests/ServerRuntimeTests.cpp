@@ -1225,6 +1225,73 @@ void testHostCanToggleStudyEventLoggingWithoutReplacingRunId() {
            "disabling event logging should preserve the run id so future writes append instead of replacing logs");
 }
 
+void testHostCanToggleVisualizationModeAndReplicateMetadata() {
+    net::ServerRuntime server;
+
+    net::WelcomeMessage hostWelcome;
+    expect(server.acceptClient(net::HelloMessage{155u, 0u, "visual-host"}, 5'500'000u, &hostWelcome, nullptr),
+           "host should connect for visualization-mode control");
+    net::WelcomeMessage guestWelcome;
+    expect(server.acceptClient(net::HelloMessage{156u, 0u, "visual-guest"}, 5'500'100u, &guestWelcome, nullptr),
+           "guest should connect for visualization-mode control");
+    server.takePendingPackets();
+    expect(hostWelcome.sessionMetadata.visualizationMode ==
+               net::SessionVisualizationMode::Diagnostic,
+           "sessions should start in diagnostic visualization mode by default");
+
+    expect(server.handleControlPayload(
+               hostWelcome.assignedPeerId,
+               net::PacketPayload{net::RuntimeParamChangeRequest{
+                   net::RuntimeParamScope::Session,
+                   -1,
+                   "sv.visualization_mode",
+                   static_cast<float>(static_cast<std::uint8_t>(
+                       net::SessionVisualizationMode::Reality))}},
+               5'500'200u),
+           "host visualization-mode requests should be accepted");
+    const auto applyPackets = server.takePendingPackets();
+    const auto applyResult = requireRuntimeParamApplyResultForPeer(
+        applyPackets, hostWelcome.assignedPeerId, "sv.visualization_mode");
+    expect(applyResult.applied &&
+               applyResult.stagedApplyBoundary == sim::StagedApplyBoundary::NextSnapshot &&
+               server.config().visualizationMode == net::SessionVisualizationMode::Reality,
+           "visualization-mode requests should apply immediately and publish on the next snapshot");
+
+    for (int tick = 0; tick < 4; ++tick) {
+        server.tickOnce(5'516'667u + static_cast<std::uint64_t>(tick) * 16'667u);
+    }
+    const auto snapshotPackets = server.takePendingPackets();
+    const net::WorldSnapshot* hostSnapshot =
+        findSnapshotForPeer(snapshotPackets, hostWelcome.assignedPeerId);
+    const net::WorldSnapshot* guestSnapshot =
+        findSnapshotForPeer(snapshotPackets, guestWelcome.assignedPeerId);
+    expect(hostSnapshot != nullptr &&
+               guestSnapshot != nullptr &&
+               hostSnapshot->sessionMetadata.visualizationMode ==
+                   net::SessionVisualizationMode::Reality &&
+               guestSnapshot->sessionMetadata.visualizationMode ==
+                   net::SessionVisualizationMode::Reality,
+           "visualization mode should replicate to every participant through session metadata");
+
+    expect(!server.handleControlPayload(
+               guestWelcome.assignedPeerId,
+               net::PacketPayload{net::RuntimeParamChangeRequest{
+                   net::RuntimeParamScope::Session,
+                   -1,
+                   "sv.visualization_mode",
+                   static_cast<float>(static_cast<std::uint8_t>(
+                       net::SessionVisualizationMode::Diagnostic))}},
+               5'600'000u),
+           "guest visualization-mode requests should be rejected");
+    const auto rejectPackets = server.takePendingPackets();
+    const auto rejectResult = requireRuntimeParamApplyResultForPeer(
+        rejectPackets, guestWelcome.assignedPeerId, "sv.visualization_mode");
+    expect(!rejectResult.applied &&
+               rejectResult.message == "host_only" &&
+               server.config().visualizationMode == net::SessionVisualizationMode::Reality,
+           "guest visualization-mode requests should leave authoritative mode unchanged");
+}
+
 void testStudyActionHostCanSpawnFrozenPassiveBotAhead() {
     net::ServerConfig config;
     config.studyActionsEnabled = true;
@@ -3783,6 +3850,7 @@ int main() {
         testRuntimeParamControlRequestsProduceAppliedAndStagedFeedback();
         testInvalidSessionTickRateRequestsAreRejectedDeterministically();
         testHostCanToggleStudyEventLoggingWithoutReplacingRunId();
+        testHostCanToggleVisualizationModeAndReplicateMetadata();
         testStudyActionHostCanSpawnFrozenPassiveBotAhead();
         testStudyActionRejectsGuestRequests();
         testStudyActionRejectsNonStudySessions();

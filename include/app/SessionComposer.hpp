@@ -200,6 +200,7 @@ public:
             serverConfig.levelSlot = config.levelSlot;
             serverConfig.levelHash = config.levelHash;
             serverConfig.shotEvaluationMode = config.shotEvaluationMode;
+            serverConfig.visualizationMode = config.visualizationMode;
             result.composition.hostedServer_ =
                 std::make_unique<net::ServerRuntime>(serverConfig, sim::SimConfig{}, hostedEnvironment);
             result.composition.startupSequence_.push_back("server");

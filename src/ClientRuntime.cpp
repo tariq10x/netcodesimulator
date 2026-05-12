@@ -1812,21 +1812,6 @@ void ClientRuntime::render() const {
     client::HudOverlayRenderer::renderKillFeed(frame.killFeed);
     client::HudOverlayRenderer::renderCompactScore(frame.compactScore);
 
-    if (!frame.hud.lines.empty()) {
-        float y = static_cast<float>(Config::SCREEN_HEIGHT - 124);
-        for (std::size_t index = 0; index < frame.hud.lines.size(); ++index) {
-            const std::string& line = frame.hud.lines[frame.hud.lines.size() - 1u - index];
-            const Color color = line.find("Down |") != std::string::npos
-                ? ORANGE
-                : LIGHTGRAY;
-            drawRuntimeText(line, 30.0f, y, 20, color);
-            y -= 32.0f;
-            if (y < static_cast<float>(Config::SCREEN_HEIGHT - 252)) {
-                break;
-            }
-        }
-    }
-
     client::HudOverlayRenderer::renderScoreboard(frame.scoreboard);
     renderHostScoreboardAdminPanel();
 
@@ -2954,6 +2939,18 @@ void ClientRuntime::handlePacket(const Packet& packet) {
                     lastCombatEventText_ = "Only the host can toggle event logging";
                 }
             }
+            if (result.scope == RuntimeParamScope::Session &&
+                result.key == "sv.visualization_mode") {
+                SessionVisualizationMode mode;
+                if (result.applied &&
+                    tryParseSessionVisualizationModeValue(result.value, &mode)) {
+                    authoritativeSessionMetadata_.visualizationMode = mode;
+                    lastCombatEventText_ =
+                        std::string("Visualization: ") + toString(mode);
+                } else if (result.message == "host_only") {
+                    lastCombatEventText_ = "Only the host can change visualization mode";
+                }
+            }
             if (result.scope == RuntimeParamScope::Session && result.key == "sv.admin_add_bot") {
                 if (result.applied) {
                     lastCombatEventText_ = result.targetId > 0
@@ -3371,6 +3368,15 @@ void ClientRuntime::applyRuntimeSettingsAction(const RuntimeSettingsOverlay::Act
                             "Snapshot rate update staged for the next authoritative tick boundary";
                     }
                     return;
+                case RuntimeSettingsOverlay::ControlId::VisualizationMode:
+                    if (state_ == ClientConnectionState::Connected && isLocalHost()) {
+                        sendRuntimeParamChangeRequest(RuntimeParamScope::Session,
+                                                      -1,
+                                                      "sv.visualization_mode",
+                                                      static_cast<float>(action.choiceValue));
+                        lastCombatEventText_ = "Visualization mode update requested";
+                    }
+                    return;
                 default:
                     return;
             }
@@ -3462,6 +3468,10 @@ RuntimeSettingsOverlay::State ClientRuntime::buildRuntimeSettingsOverlayState() 
     const ShotEvaluationMode activeShotMode = hasAuthoritativeSessionMetadata_
         ? authoritativeSessionMetadata_.shotEvaluationMode
         : ShotEvaluationMode::SeenPosition;
+    const SessionVisualizationMode activeVisualizationMode =
+        hasAuthoritativeSessionMetadata_
+            ? authoritativeSessionMetadata_.visualizationMode
+            : SessionVisualizationMode::Diagnostic;
     const std::uint16_t liveTickRateHz =
         hasSnapshot_ && latestSnapshot_.cadence.authoritativeTickHz > 0u
             ? latestSnapshot_.cadence.authoritativeTickHz
@@ -3668,6 +3678,27 @@ RuntimeSettingsOverlay::State ClientRuntime::buildRuntimeSettingsOverlayState() 
                                 snapshotRateHz <= displayedTickRateHz));
         }
         state.leftControls.push_back(snapshotRate);
+
+        RuntimeSettingsOverlay::ControlState visualizationMode;
+        visualizationMode.id = RuntimeSettingsOverlay::ControlId::VisualizationMode;
+        visualizationMode.type = RuntimeSettingsOverlay::ControlType::Choice;
+        visualizationMode.label = "Visualization Mode";
+        visualizationMode.description =
+            "Host only. Diagnostic shows ghost tracks; Reality hides them from player view.";
+        visualizationMode.valueLabel = toString(activeVisualizationMode);
+        visualizationMode.enabled = true;
+        visualizationMode.choices = {
+            makeChoiceState("Diagnostic",
+                            static_cast<int>(SessionVisualizationMode::Diagnostic),
+                            activeVisualizationMode ==
+                                SessionVisualizationMode::Diagnostic,
+                            true),
+            makeChoiceState("Reality",
+                            static_cast<int>(SessionVisualizationMode::Reality),
+                            activeVisualizationMode == SessionVisualizationMode::Reality,
+                            true)
+        };
+        state.leftControls.push_back(visualizationMode);
 
         RuntimeSettingsOverlay::ControlState shotMode;
         shotMode.id = RuntimeSettingsOverlay::ControlId::ShotEvaluationMode;

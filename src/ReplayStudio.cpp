@@ -2047,21 +2047,6 @@ void ReplayStudio::renderFrameWorld(const client::RenderFrame& frame) const {
     client::HudOverlayRenderer::renderKillFeed(frame.killFeed);
     client::HudOverlayRenderer::renderCompactScore(frame.compactScore);
     client::HudOverlayRenderer::renderScoreboard(frame.scoreboard);
-
-    if (!frame.hud.lines.empty()) {
-        float y = static_cast<float>(Config::SCREEN_HEIGHT - 48);
-        for (std::size_t index = 0; index < frame.hud.lines.size(); ++index) {
-            const std::string& line = frame.hud.lines[frame.hud.lines.size() - 1u - index];
-            drawText(TypographyStyleId::Body,
-                     line,
-                     Vector2{580.0f, y},
-                     line.find("Down |") != std::string::npos ? ORANGE : LIGHTGRAY);
-            y -= 32.0f;
-            if (y < static_cast<float>(Config::SCREEN_HEIGHT - 176)) {
-                break;
-            }
-        }
-    }
 }
 
 void ReplayStudio::renderTransport() const {

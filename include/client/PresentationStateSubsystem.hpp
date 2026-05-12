@@ -96,8 +96,9 @@ public:
         viewState.diagnostics = diagnosticsView(inputs);
         viewState.replay = inputs.replay;
         viewState.remotePlayers = buildRemotePlayers(inputs);
-        viewState.remotePlayerGhosts =
-            buildRemotePlayers(inputs, inputs.controlRemotePlayers, true);
+        viewState.remotePlayerGhosts = viewState.hostedSession.ghostTracksVisible
+            ? buildRemotePlayers(inputs, inputs.controlRemotePlayers, true)
+            : std::vector<RemotePlayerView>{};
         viewState.remoteEnemies = buildRemoteEnemies(inputs);
         viewState.teamMenu.visible = inputs.teamMenuVisible;
         viewState.teamMenu.currentTeam = viewState.hud.localTeam;
@@ -127,48 +128,8 @@ public:
     }
 
     static std::vector<std::string> compactHudLines(const ClientViewState& viewState) {
-        std::vector<std::string> lines;
-        if (viewState.hud.localHealth > 0) {
-            lines.push_back("Health " + std::to_string(viewState.hud.localHealth) +
-                            " | Team " + std::string(sim::toString(viewState.hud.localTeam)));
-        } else {
-            lines.push_back("Down | Team " + std::string(sim::toString(viewState.hud.localTeam)));
-        }
-        const std::string ghostLine = ghostTrackSummary(viewState);
-        if (!ghostLine.empty()) {
-            lines.push_back(ghostLine);
-        }
-        const std::string ruleLine = studyRuleSummary(viewState.diagnostics);
-        if (!ruleLine.empty()) {
-            lines.push_back(ruleLine);
-        }
-        const std::string predictionLine = predictionSummary(viewState.diagnostics);
-        if (!predictionLine.empty()) {
-            lines.push_back(predictionLine);
-        }
-        const std::string shotLine = shotStudySummary(viewState.diagnostics);
-        if (!shotLine.empty()) {
-            lines.push_back(shotLine);
-        }
-        const std::string replayRuleLine = replayRuleSummary(viewState.replay);
-        if (!replayRuleLine.empty()) {
-            lines.push_back(replayRuleLine);
-        }
-        const std::string replaySpectatorLine = replaySpectatorSummary(viewState.replay);
-        if (!replaySpectatorLine.empty()) {
-            lines.push_back(replaySpectatorLine);
-        }
-        const std::string paneSummary = paneStatusSummary(viewState);
-        if (!paneSummary.empty()) {
-            lines.push_back(paneSummary);
-        }
-        if (!viewState.pane.checkpointLabel.empty()) {
-            lines.push_back(viewState.pane.checkpointLabel);
-        }
-        if (!viewState.hud.combatEventText.empty()) {
-            lines.push_back(viewState.hud.combatEventText);
-        }
-        return lines;
+        static_cast<void>(viewState);
+        return {};
     }
 
     static std::string paneStatusSummary(const ClientViewState& viewState) {
@@ -530,12 +491,15 @@ private:
             ? metadata.sessionLabel
             : (!metadata.hostPlayerName.empty() ? metadata.hostPlayerName : "Hosted Session");
         view.shotRuleLabel = std::string(net::toString(metadata.shotEvaluationMode));
+        view.visualizationModeLabel = std::string(net::toString(metadata.visualizationMode));
         view.botDirectorLabel = metadata.botsFrozen
             ? "Frozen"
             : (metadata.botsCanShoot ? "Active" : "Peace");
         view.publicJoinPort = metadata.publicJoinPort;
         view.botsFrozen = metadata.botsFrozen;
         view.botsCanShoot = metadata.botsCanShoot;
+        view.ghostTracksVisible =
+            metadata.visualizationMode == net::SessionVisualizationMode::Diagnostic;
         return view;
     }
 
@@ -653,6 +617,10 @@ private:
     }
 
     static std::string ghostTrackSummary(const ClientViewState& viewState) {
+        if (!viewState.hostedSession.ghostTracksVisible) {
+            return {};
+        }
+
         if (viewState.remotePlayers.empty() && viewState.remotePlayerGhosts.empty()) {
             return {};
         }

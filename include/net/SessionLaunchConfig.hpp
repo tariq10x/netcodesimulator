@@ -71,6 +71,7 @@ struct SessionLaunchConfig {
     std::uint8_t localParticipantCount{kDefaultLocalParticipantCount};
     sim::TeamId preferredTeam{sim::TeamId::None};
     ShotEvaluationMode shotEvaluationMode{ShotEvaluationMode::SeenPosition};
+    SessionVisualizationMode visualizationMode{SessionVisualizationMode::Diagnostic};
     std::uint16_t tickRateHz{kDefaultSessionTickRateHz};
     std::uint16_t snapshotRateHz{kDefaultHostedSnapshotRateHz};
     SessionStudyOptions studyOptions{};
@@ -446,6 +447,7 @@ inline HostedSessionMetadata makeHostedSessionMetadata(const SessionLaunchConfig
     metadata.publicJoinPort = normalized.publicJoinPort;
     metadata.maxHumanPlayers = normalized.maxHumanPlayers;
     metadata.shotEvaluationMode = normalized.shotEvaluationMode;
+    metadata.visualizationMode = normalized.visualizationMode;
     metadata.botsFrozen = true;
     metadata.botsCanShoot = true;
     metadata.studyEventLoggingEnabled = normalized.studyOptions.enableEventLogging;

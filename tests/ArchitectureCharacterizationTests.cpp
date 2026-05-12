@@ -666,11 +666,11 @@ void testRenderPresentationConsumesClientViewStateHandoff() {
     expect(renderBlock.find("client::RenderFrame frame = buildRenderFrame(viewState);") != std::string::npos &&
                renderBlock.find("frame.remoteEnemies") != std::string::npos &&
                renderBlock.find("frame.remotePlayers") != std::string::npos &&
-               renderBlock.find("frame.hud.lines") != std::string::npos &&
                renderBlock.find("frame.scoreboard") != std::string::npos,
            "ClientRuntime render should consume a RenderFrame rather than rebuilding render state from sync-owned collections inline");
     expect(renderBlock.find("Player3D::renderRootFromSimState(") == std::string::npos &&
                renderBlock.find("client::PresentationStateSubsystem::compactHudLines(viewState)") == std::string::npos &&
+               renderBlock.find("renderHealth(frame.hud)") == std::string::npos &&
                renderBlock.find("const auto& actor = remoteEnemies_[index];") == std::string::npos,
            "ClientRuntime render should stop reaching into raw player and enemy sync state after the RenderFrame handoff");
 }

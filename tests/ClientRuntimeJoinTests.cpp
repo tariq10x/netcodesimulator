@@ -1366,11 +1366,11 @@ void testGuestRuntimeOverlayOnlyShowsEditableSettings() {
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::ReconciliationStrategy) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::SmoothWindowMs) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::TickRate) == nullptr &&
+               findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::VisualizationMode) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::StudyEventLogging) == nullptr &&
-               overlayState.leftControls.empty() &&
                overlayState.targetEditor.latency.visible &&
                overlayState.targetEditor.loss.visible,
-           "guest runtime settings should hide all host-managed sync controls and keep only the guest transport controls visible");
+           "guest runtime settings should hide host-managed sync controls while keeping local HUD and guest transport controls visible");
 }
 
 void testHostRuntimeOverlayShowsAllParticipantSettings() {
@@ -1419,6 +1419,8 @@ void testHostRuntimeOverlayShowsAllParticipantSettings() {
         findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::SnapshotRate);
     const RuntimeSettingsOverlay::ControlState* eventLoggingControl =
         findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::StudyEventLogging);
+    const RuntimeSettingsOverlay::ControlState* visualizationControl =
+        findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::VisualizationMode);
     expect(overlayState.targets.size() == 2u,
            "host runtime settings should list every participant target");
     expect(tickRateControl != nullptr,
@@ -1429,6 +1431,19 @@ void testHostRuntimeOverlayShowsAllParticipantSettings() {
                eventLoggingControl->type == RuntimeSettingsOverlay::ControlType::Toggle &&
                !eventLoggingControl->toggleValue,
            "host runtime settings should expose event logging as an off-by-default session toggle");
+    expect(visualizationControl != nullptr &&
+               visualizationControl->type == RuntimeSettingsOverlay::ControlType::Choice &&
+               visualizationControl->valueLabel == "Diagnostic" &&
+               std::any_of(visualizationControl->choices.begin(),
+                           visualizationControl->choices.end(),
+                           [](const RuntimeSettingsOverlay::ChoiceState& choice) {
+                               return choice.value ==
+                                          static_cast<int>(
+                                              net::SessionVisualizationMode::Reality) &&
+                                      !choice.selected &&
+                                      choice.enabled;
+                           }),
+           "host runtime settings should expose the session-wide Reality/Diagnostic visualization mode");
     expect(tickRateControl != nullptr &&
                tickRateControl->description.find("Live 120 Hz") != std::string::npos &&
                tickRateControl->description.find("staged") == std::string::npos,
@@ -3186,24 +3201,11 @@ void testCompactHudAndScoreboardReflectLatestAuthoritativeSnapshot() {
            "client view state should keep typed attacker and defender scoreboard sections");
 
     const std::vector<std::string> hudLines = client.compactHudLines();
-    expect(std::none_of(hudLines.begin(),
-                        hudLines.end(),
-                        [](const std::string& line) {
-                            return line.find("Team Kills") != std::string::npos;
-                        }),
-           "compact score data should move into typed overlay state instead of remaining the first generic hud string");
-    for (const auto& line : hudLines) {
-        expect(line.find("Peer") == std::string::npos,
-               "compact hud should not reintroduce peer-id diagnostics by default");
-        expect(line.find("Port") == std::string::npos,
-               "compact hud should not reintroduce local-port diagnostics by default");
-        expect(line.find("Ack") == std::string::npos,
-               "compact hud should not reintroduce ack counters by default");
-        expect(line.find("Latency") == std::string::npos,
-               "compact hud should keep local-network diagnostics behind the explicit panel");
-        expect(line.find("Loss") == std::string::npos,
-               "compact hud should keep local-network loss diagnostics behind the explicit panel");
-    }
+    const client::RenderFrame frame = net::ClientRuntimeTestAccess::renderFrame(client);
+    expect(hudLines.empty() &&
+               frame.hud.lines.empty() &&
+               frame.compactScore.visible,
+           "removed player HUD should leave compact score data in typed overlay state without bottom-left text");
 
     const std::vector<std::string> lines = client.scoreboardLines();
     bool sawBotRow = false;

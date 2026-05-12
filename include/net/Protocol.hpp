@@ -14,7 +14,7 @@ namespace net {
 using ByteBuffer = std::vector<std::uint8_t>;
 
 constexpr std::uint32_t kProtocolMagic = 0x4D53544Cu;  // "LTSM" as little-endian bytes.
-constexpr std::uint16_t kProtocolVersion = 11u;
+constexpr std::uint16_t kProtocolVersion = 12u;
 constexpr std::uint16_t kDefaultSessionTickRateHz = 60u;
 constexpr std::uint16_t kMinSessionTickRateHz = 20u;
 constexpr std::uint16_t kMaxSessionTickRateHz = 240u;
@@ -61,6 +61,11 @@ enum class ShotEvaluationMode : std::uint8_t {
     LivePosition = 1
 };
 
+enum class SessionVisualizationMode : std::uint8_t {
+    Diagnostic = 0,
+    Reality = 1
+};
+
 enum class RuntimeParamScope : std::uint8_t {
     Global = 0,
     Player = 1,
@@ -100,7 +105,8 @@ enum class ParseError : std::uint8_t {
     InvalidPaneSlot = 16,
     InvalidPaneViewMode = 17,
     InvalidRuntimeReconciliationStrategy = 18,
-    InvalidSessionActionKind = 19
+    InvalidSessionActionKind = 19,
+    InvalidSessionVisualizationMode = 20
 };
 
 struct PacketHeader {
@@ -141,6 +147,7 @@ struct WelcomeMessage {
         std::uint16_t publicJoinPort{0u};
         std::uint16_t maxHumanPlayers{2u};
         ShotEvaluationMode shotEvaluationMode{ShotEvaluationMode::SeenPosition};
+        SessionVisualizationMode visualizationMode{SessionVisualizationMode::Diagnostic};
         bool botsFrozen{true};
         bool botsCanShoot{true};
         bool studyEventLoggingEnabled{false};
@@ -351,8 +358,13 @@ struct ReliableControlState {
 
 const char* toString(ParseError error);
 const char* toString(ShotEvaluationMode mode);
+const char* toString(SessionVisualizationMode mode);
 bool tryParseShotEvaluationMode(std::uint8_t rawMode, ShotEvaluationMode* modeOut);
 bool tryParseShotEvaluationModeValue(float rawValue, ShotEvaluationMode* modeOut);
+bool tryParseSessionVisualizationMode(std::uint8_t rawMode,
+                                      SessionVisualizationMode* modeOut);
+bool tryParseSessionVisualizationModeValue(float rawValue,
+                                           SessionVisualizationMode* modeOut);
 bool tryParseSessionTickRateHzValue(float rawValue, std::uint16_t* tickRateHzOut);
 bool tryParseSessionSnapshotRateHzValue(float rawValue, std::uint16_t* snapshotRateHzOut);
 PacketKind packetKindForPayload(const PacketPayload& payload);

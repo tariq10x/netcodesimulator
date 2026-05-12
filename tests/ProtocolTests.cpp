@@ -73,7 +73,9 @@ net::ReplicationSnapshot makeReplicationSnapshotContract() {
 }
 
 net::SessionSummary makeSessionSummaryContract(
-    net::ShotEvaluationMode shotEvaluationMode = net::ShotEvaluationMode::SeenPosition) {
+    net::ShotEvaluationMode shotEvaluationMode = net::ShotEvaluationMode::SeenPosition,
+    net::SessionVisualizationMode visualizationMode =
+        net::SessionVisualizationMode::Diagnostic) {
     net::SessionSummary summary;
     summary.sessionMetadata.sessionLabel = "Player LAN Match";
     summary.sessionMetadata.hostPlayerName = "host-player";
@@ -82,6 +84,7 @@ net::SessionSummary makeSessionSummaryContract(
     summary.sessionMetadata.publicJoinPort = 41000u;
     summary.sessionMetadata.maxHumanPlayers = 2u;
     summary.sessionMetadata.shotEvaluationMode = shotEvaluationMode;
+    summary.sessionMetadata.visualizationMode = visualizationMode;
     summary.sessionMetadata.botsFrozen = true;
     summary.sessionMetadata.botsCanShoot = false;
     summary.sessionMetadata.studyEventLoggingEnabled = true;
@@ -144,7 +147,9 @@ net::GameplayEventBatch makeGameplayEventBatchContract() {
 }
 
 net::Packet makeSnapshotPacket(
-    net::ShotEvaluationMode shotEvaluationMode = net::ShotEvaluationMode::SeenPosition) {
+    net::ShotEvaluationMode shotEvaluationMode = net::ShotEvaluationMode::SeenPosition,
+    net::SessionVisualizationMode visualizationMode =
+        net::SessionVisualizationMode::Diagnostic) {
     net::Packet packet;
     packet.header.peerId = 2;
     packet.header.channel = net::Channel::Snapshot;
@@ -154,7 +159,8 @@ net::Packet makeSnapshotPacket(
     packet.header.kind = net::PacketKind::WorldSnapshot;
 
     const net::ReplicationSnapshot replication = makeReplicationSnapshotContract();
-    const net::SessionSummary summary = makeSessionSummaryContract(shotEvaluationMode);
+    const net::SessionSummary summary =
+        makeSessionSummaryContract(shotEvaluationMode, visualizationMode);
     const net::GameplayEventBatch gameplayEvents = makeGameplayEventBatchContract();
 
     packet.payload = net::WorldSnapshot::fromContracts(replication, summary, gameplayEvents);
@@ -162,11 +168,14 @@ net::Packet makeSnapshotPacket(
 }
 
 net::Packet makeWelcomePacket(
-    net::ShotEvaluationMode shotEvaluationMode = net::ShotEvaluationMode::SeenPosition) {
+    net::ShotEvaluationMode shotEvaluationMode = net::ShotEvaluationMode::SeenPosition,
+    net::SessionVisualizationMode visualizationMode =
+        net::SessionVisualizationMode::Diagnostic) {
     net::SessionLaunchConfig config =
         net::makeHostSessionLaunchConfig(4, "host-player", 41000u);
     config.sessionLabel = "Player LAN Match";
     config.shotEvaluationMode = shotEvaluationMode;
+    config.visualizationMode = visualizationMode;
     config.studyOptions.enableEventLogging = true;
     config.studyEventRunId = "welcome-run";
 
@@ -811,6 +820,7 @@ void testInvalidShotEvaluationMetadataIsRejectedDeterministically() {
     net::ByteBuffer bytes = net::serializePacket(packet);
     const auto& welcome = std::get<net::WelcomeMessage>(packet.payload);
     const std::size_t trailingMetadataBytes =
+        sizeof(std::uint8_t) +  // visualizationMode
         sizeof(std::uint8_t) +  // botsFrozen
         sizeof(std::uint8_t) +  // botsCanShoot
         sizeof(std::uint8_t) +  // studyEventLoggingEnabled
@@ -821,6 +831,23 @@ void testInvalidShotEvaluationMetadataIsRejectedDeterministically() {
     expect(!decoded.ok, "unknown shot-evaluation modes should be rejected");
     expect(decoded.error == net::ParseError::InvalidShotEvaluationMode,
            "unknown shot-evaluation modes should surface a deterministic protocol error");
+}
+
+void testInvalidVisualizationMetadataIsRejectedDeterministically() {
+    const net::Packet packet = makeWelcomePacket();
+    net::ByteBuffer bytes = net::serializePacket(packet);
+    const auto& welcome = std::get<net::WelcomeMessage>(packet.payload);
+    const std::size_t trailingMetadataBytes =
+        sizeof(std::uint8_t) +  // botsFrozen
+        sizeof(std::uint8_t) +  // botsCanShoot
+        sizeof(std::uint8_t) +  // studyEventLoggingEnabled
+        sizeof(std::uint16_t) + welcome.sessionMetadata.studyEventRunId.size();
+    bytes[bytes.size() - trailingMetadataBytes - sizeof(std::uint8_t)] = 0xFFu;
+
+    const net::ParseResult decoded = net::deserializePacket(bytes);
+    expect(!decoded.ok, "unknown visualization modes should be rejected");
+    expect(decoded.error == net::ParseError::InvalidSessionVisualizationMode,
+           "unknown visualization modes should surface a deterministic protocol error");
 }
 
 void testShotEvaluationModesRoundTripAndRejectInvalidValues() {
@@ -852,6 +879,41 @@ void testShotEvaluationModesRoundTripAndRejectInvalidValues() {
     expect(!net::tryParseShotEvaluationModeValue(2.0f, &ignoredMode) &&
                !net::tryParseShotEvaluationModeValue(0.5f, &ignoredMode),
            "the shared protocol parser should reject unsupported or non-integral shot-evaluation values");
+}
+
+void testSessionVisualizationModesRoundTripAndRejectInvalidValues() {
+    for (const net::SessionVisualizationMode mode :
+         {net::SessionVisualizationMode::Diagnostic, net::SessionVisualizationMode::Reality}) {
+        const net::ParseResult decodedSnapshot = net::deserializePacket(
+            net::serializePacket(makeSnapshotPacket(net::ShotEvaluationMode::SeenPosition, mode)));
+        expect(decodedSnapshot.ok, "valid visualization modes should deserialize in snapshots");
+        expect(std::get<net::WorldSnapshot>(decodedSnapshot.packet.payload)
+                   .sessionMetadata.visualizationMode == mode,
+               "snapshot packets should round-trip both session visualization modes");
+
+        const net::ParseResult decodedWelcome = net::deserializePacket(
+            net::serializePacket(makeWelcomePacket(net::ShotEvaluationMode::SeenPosition, mode)));
+        expect(decodedWelcome.ok, "valid visualization modes should deserialize in welcomes");
+        expect(std::get<net::WelcomeMessage>(decodedWelcome.packet.payload)
+                   .sessionMetadata.visualizationMode == mode,
+               "welcome packets should round-trip both session visualization modes");
+
+        net::SessionVisualizationMode parsedMode;
+        expect(net::tryParseSessionVisualizationMode(static_cast<std::uint8_t>(mode),
+                                                     &parsedMode) &&
+                   parsedMode == mode,
+               "the shared protocol parser should accept each supported visualization enum");
+        expect(net::tryParseSessionVisualizationModeValue(
+                   static_cast<float>(static_cast<std::uint8_t>(mode)),
+                   &parsedMode) &&
+                   parsedMode == mode,
+               "the shared protocol parser should accept runtime-param values for each supported visualization enum");
+    }
+
+    net::SessionVisualizationMode ignoredMode;
+    expect(!net::tryParseSessionVisualizationModeValue(2.0f, &ignoredMode) &&
+               !net::tryParseSessionVisualizationModeValue(0.5f, &ignoredMode),
+           "the shared protocol parser should reject unsupported or non-integral visualization values");
 }
 
 void testSessionTickRateValuesAcceptIntegralBoundsAndRejectInvalidInputs() {
@@ -943,7 +1005,9 @@ int main() {
         testClientViewStateExposesTypedParticipantAndPaneContracts();
         testProxyPacketsRoundTrip();
         testInvalidShotEvaluationMetadataIsRejectedDeterministically();
+        testInvalidVisualizationMetadataIsRejectedDeterministically();
         testShotEvaluationModesRoundTripAndRejectInvalidValues();
+        testSessionVisualizationModesRoundTripAndRejectInvalidValues();
         testSessionTickRateValuesAcceptIntegralBoundsAndRejectInvalidInputs();
         testInvalidHeaderRejection();
         testInvalidSessionActionKindIsRejectedDeterministically();

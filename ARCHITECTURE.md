@@ -110,6 +110,8 @@ The server side owns the authoritative game state:
 
 This is the side that decides what is actually true in the simulation.
 
+Session visualization mode is part of the authoritative session metadata. The server replicates whether a session is in Diagnostic or Reality visualization, while the underlying snapshot data remains unchanged so diagnostics and tests can continue to reason about control tracks.
+
 ### 4. Transport and Networking Layer
 
 The networking layer is not just raw sockets. It also contains the study machinery that makes the simulator useful:
@@ -162,6 +164,7 @@ In practical terms, the implemented product scope includes:
 - browsing LAN sessions
 - running Lab Study as a local hosted session against bots
 - toggling and studying prediction and interpolation behavior during active sessions
+- switching hosted sessions between Diagnostic mode, where ghost tracks are visible for study, and Reality mode, where the player-facing view hides those ghosts
 - selecting the shot evaluation rule during host setup
 - changing proxy-backed latency/loss-style parameters at runtime in proxied sessions
 - observing diagnostics, score, and combat feedback

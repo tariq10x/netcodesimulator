@@ -27,9 +27,11 @@ struct HostedSessionView {
     std::string label{};
     std::string shotRuleLabel{};
     std::string botDirectorLabel{};
+    std::string visualizationModeLabel{};
     std::uint16_t publicJoinPort{0u};
     bool botsFrozen{true};
     bool botsCanShoot{true};
+    bool ghostTracksVisible{true};
 };
 
 struct HudView {

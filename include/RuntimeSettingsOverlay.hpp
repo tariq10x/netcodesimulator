@@ -40,7 +40,8 @@ public:
         DownReorder = 14,
         StudyEventLogging = 15,
         ReplayGhosts = 16,
-        ReplayTrack = 17
+        ReplayTrack = 17,
+        VisualizationMode = 18
     };
 
     struct ChoiceState {
@@ -294,6 +295,13 @@ private:
         std::vector<Rectangle> choiceButtons{};
     };
 
+    struct GridPlacement {
+        std::size_t column{0u};
+        std::size_t row{0u};
+        std::size_t rowSpan{1u};
+        bool found{false};
+    };
+
     float targetScrollOffset_{0.0f};
     DragTarget activeDrag_{DragTarget::None};
 
@@ -422,14 +430,48 @@ private:
                visibleLeftControlCount(controls) >= gridControlThreshold;
     }
 
+    static std::size_t gridRowSpan(ControlId controlId) {
+        return controlId == ControlId::VisualizationMode ? 2u : 1u;
+    }
+
+    static std::size_t leftGridRowCount(const std::vector<ControlState>& controls) {
+        std::size_t columnRows[2]{0u, 0u};
+        for (const ControlState& control : controls) {
+            if (!control.visible) {
+                continue;
+            }
+
+            const std::size_t column = columnRows[0] <= columnRows[1] ? 0u : 1u;
+            columnRows[column] += gridRowSpan(control.id);
+        }
+        return std::max<std::size_t>(1u, std::max(columnRows[0], columnRows[1]));
+    }
+
+    static GridPlacement gridPlacementFor(const std::vector<ControlState>& controls,
+                                          ControlId controlId) {
+        std::size_t columnRows[2]{0u, 0u};
+        for (const ControlState& control : controls) {
+            if (!control.visible) {
+                continue;
+            }
+
+            const std::size_t column = columnRows[0] <= columnRows[1] ? 0u : 1u;
+            const std::size_t rowSpan = gridRowSpan(control.id);
+            if (control.id == controlId) {
+                return GridPlacement{column, columnRows[column], rowSpan, true};
+            }
+            columnRows[column] += rowSpan;
+        }
+        return {};
+    }
+
     static float leftGridControlHeight(const Rectangle& section,
-                                       std::size_t visibleControlCount) {
+                                       std::size_t rowCount) {
         constexpr float topInset = 58.0f;
         constexpr float bottomInset = 18.0f;
         constexpr float rowGap = 12.0f;
         constexpr float preferredHeight = 104.0f;
         constexpr float minimumHeight = 88.0f;
-        const std::size_t rowCount = std::max<std::size_t>(1u, (visibleControlCount + 1u) / 2u);
         const float availableHeight = section.height -
             topInset -
             bottomInset -
@@ -440,6 +482,10 @@ private:
     }
 
     static float controlHeight(const ControlState& control) {
+        if (control.id == ControlId::VisualizationMode) {
+            return 184.0f;
+        }
+
         switch (control.type) {
             case ControlType::Toggle:
                 return 74.0f;
@@ -465,27 +511,24 @@ private:
         if (grid) {
             constexpr float columnGap = 12.0f;
             constexpr float rowGap = 12.0f;
-            const std::size_t visibleCount = visibleLeftControlCount(controls);
+            const std::size_t rowCount = leftGridRowCount(controls);
             const float cardWidth = (section.width - (inset * 2.0f) - columnGap) * 0.5f;
-            const float cardHeight = leftGridControlHeight(section, visibleCount);
-            std::size_t visibleIndex = 0u;
+            const float cardHeight = leftGridControlHeight(section, rowCount);
+            const GridPlacement placement = gridPlacementFor(controls, controlId);
             for (const ControlState& control : controls) {
-                if (!control.visible) {
-                    continue;
-                }
-                if (control.id == controlId) {
-                    const std::size_t column = visibleIndex % 2u;
-                    const std::size_t row = visibleIndex / 2u;
-                    layout.card = Rectangle{
-                        startX + static_cast<float>(column) * (cardWidth + columnGap),
-                        startY + static_cast<float>(row) * (cardHeight + rowGap),
-                        cardWidth,
-                        cardHeight
-                    };
+                if (control.visible && control.id == controlId) {
                     targetType = control.type;
                     break;
                 }
-                ++visibleIndex;
+            }
+            if (placement.found) {
+                layout.card = Rectangle{
+                    startX + static_cast<float>(placement.column) * (cardWidth + columnGap),
+                    startY + static_cast<float>(placement.row) * (cardHeight + rowGap),
+                    cardWidth,
+                    cardHeight * static_cast<float>(placement.rowSpan) +
+                        rowGap * static_cast<float>(placement.rowSpan - 1u)
+                };
             }
         } else {
             float cursorY = startY;
@@ -504,18 +547,22 @@ private:
         }
 
         if (grid) {
+            const bool visualization = controlId == ControlId::VisualizationMode;
             layout.actionArea = Rectangle{
                 layout.card.x + 14.0f,
-                layout.card.y + 50.0f,
+                layout.card.y + (visualization ? 48.0f : 50.0f),
                 layout.card.width - 28.0f,
-                std::min(38.0f, std::max(32.0f, layout.card.height - 64.0f))
+                visualization
+                    ? std::max(72.0f, layout.card.height - 60.0f)
+                    : std::min(38.0f, std::max(32.0f, layout.card.height - 64.0f))
             };
         } else if (targetType == ControlType::Choice) {
+            const bool visualization = controlId == ControlId::VisualizationMode;
             layout.actionArea = Rectangle{
                 layout.card.x + 16.0f,
                 layout.card.y + 42.0f,
                 layout.card.width - 32.0f,
-                38.0f
+                visualization ? layout.card.height - 54.0f : 38.0f
             };
         } else {
             layout.actionArea = Rectangle{
@@ -600,6 +647,21 @@ private:
         return text.empty() ? suffix : text + suffix;
     }
 
+    static int fittedTextSize(const std::string& text,
+                              int preferredSize,
+                              int minimumSize,
+                              float maxWidth) {
+        if (text.empty() || maxWidth <= 0.0f) {
+            return minimumSize;
+        }
+        for (int size = preferredSize; size >= minimumSize; --size) {
+            if (static_cast<float>(measureTextWidth(text, size)) <= maxWidth) {
+                return size;
+            }
+        }
+        return minimumSize;
+    }
+
     static void drawTextFit(const std::string& text,
                             float x,
                             float y,
@@ -607,6 +669,42 @@ private:
                             int size,
                             Color color) {
         drawText(fitTextToWidth(text, size, maxWidth), x, y, size, color);
+    }
+
+    static void drawTextAdaptive(const std::string& text,
+                                 float x,
+                                 float y,
+                                 float maxWidth,
+                                 int preferredSize,
+                                 int minimumSize,
+                                 Color color) {
+        const int size = fittedTextSize(text, preferredSize, minimumSize, maxWidth);
+        if (static_cast<float>(measureTextWidth(text, size)) <= maxWidth) {
+            drawText(text, x, y + static_cast<float>(preferredSize - size) * 0.5f, size, color);
+            return;
+        }
+        drawTextFit(text, x, y + static_cast<float>(preferredSize - size) * 0.5f, maxWidth, size, color);
+    }
+
+    static void drawCenteredTextAdaptive(const std::string& text,
+                                         const Rectangle& bounds,
+                                         int preferredSize,
+                                         int minimumSize,
+                                         Color color) {
+        const int size = fittedTextSize(text,
+                                        preferredSize,
+                                        minimumSize,
+                                        bounds.width);
+        const std::string label =
+            static_cast<float>(measureTextWidth(text, size)) <= bounds.width
+                ? text
+                : fitTextToWidth(text, size, bounds.width);
+        const int textWidth = measureTextWidth(label, size);
+        drawText(label,
+                 bounds.x + (bounds.width - static_cast<float>(textWidth)) * 0.5f,
+                 bounds.y + (bounds.height - static_cast<float>(size)) * 0.5f - 1.0f,
+                 size,
+                 color);
     }
 
     static void drawSectionTitle(const std::string& title,
@@ -644,6 +742,11 @@ private:
             1.0f);
     }
 
+    static bool isRateChoiceControl(ControlId controlId) {
+        return controlId == ControlId::TickRate ||
+               controlId == ControlId::SnapshotRate;
+    }
+
     void renderControl(const ControlState& control,
                        ControlLayout layout,
                        const Vector2& mouse) const {
@@ -659,12 +762,13 @@ private:
         const float labelMaxWidth = control.type == ControlType::Toggle && !actionBelowLabel
             ? layout.actionArea.x - layout.card.x - 36.0f
             : layout.card.width - 36.0f;
-        drawTextFit(control.label,
-                    layout.card.x + 18.0f,
-                    layout.card.y + 13.0f,
-                    labelMaxWidth,
-                    22,
-                    RAYWHITE);
+        drawTextAdaptive(control.label,
+                         layout.card.x + 18.0f,
+                         layout.card.y + 13.0f,
+                         labelMaxWidth,
+                         22,
+                         16,
+                         RAYWHITE);
 
         switch (control.type) {
             case ControlType::Toggle:
@@ -707,7 +811,7 @@ private:
             return buttons;
         }
 
-        const float gap = 8.0f;
+        const float gap = isRateChoiceControl(control.id) ? 5.0f : 8.0f;
         const float totalGap = gap * static_cast<float>(control.choices.size() - 1u);
         const float width =
             (actionArea.width - totalGap) / static_cast<float>(control.choices.size());
@@ -725,6 +829,15 @@ private:
     static void renderChoiceButtons(const ControlState& control,
                                     const std::vector<Rectangle>& buttons,
                                     const Vector2& mouse) {
+        if (control.id == ControlId::VisualizationMode) {
+            renderVisualizationChoiceButtons(control, buttons, mouse);
+            return;
+        }
+        if (isRateChoiceControl(control.id)) {
+            renderRateChoiceButtons(control, buttons, mouse);
+            return;
+        }
+
         for (std::size_t index = 0; index < buttons.size() && index < control.choices.size(); ++index) {
             const ChoiceState& choice = control.choices[index];
             const bool hovered = CheckCollisionPointRec(mouse, buttons[index]);
@@ -736,14 +849,152 @@ private:
             DrawRectangleRounded(buttons[index], 0.22f, 8, fill);
             DrawRectangleRoundedLines(buttons[index], 0.22f, 8, Color{16, 18, 24, 255});
 
-            const std::string label = fitTextToWidth(choice.label, 18, buttons[index].width - 12.0f);
-            const int textWidth = measureTextWidth(label, 18);
-            drawText(label,
-                     buttons[index].x + (buttons[index].width - textWidth) * 0.5f,
-                     buttons[index].y + 8.0f,
-                     18,
-                     RAYWHITE);
+            const Rectangle labelBounds{
+                buttons[index].x + 6.0f,
+                buttons[index].y,
+                buttons[index].width - 12.0f,
+                buttons[index].height
+            };
+            drawCenteredTextAdaptive(choice.label,
+                                     labelBounds,
+                                     18,
+                                     13,
+                                     RAYWHITE);
         }
+    }
+
+    static void renderRateChoiceButtons(const ControlState& control,
+                                        const std::vector<Rectangle>& buttons,
+                                        const Vector2& mouse) {
+        for (std::size_t index = 0; index < buttons.size() && index < control.choices.size(); ++index) {
+            const ChoiceState& choice = control.choices[index];
+            const Rectangle button = buttons[index];
+            const bool hovered = CheckCollisionPointRec(mouse, button);
+            const Color fill = !choice.enabled
+                ? Color{44, 50, 62, 226}
+                : choice.selected
+                    ? (hovered ? Color{92, 132, 218, 255} : Color{74, 112, 196, 255})
+                    : (hovered ? Color{70, 82, 104, 255} : Color{54, 66, 86, 255});
+            DrawRectangleRounded(button, 0.20f, 8, fill);
+            DrawRectangleRoundedLines(button, 0.20f, 8, Color{16, 18, 24, 255});
+
+            const std::string label = std::to_string(choice.value);
+            int fontSize = 17;
+            while (fontSize > 13 &&
+                   static_cast<float>(measureTextWidth(label, fontSize)) > button.width - 6.0f) {
+                --fontSize;
+            }
+            const int textWidth = measureTextWidth(label, fontSize);
+            drawText(label,
+                     button.x + (button.width - static_cast<float>(textWidth)) * 0.5f,
+                     button.y + (button.height - static_cast<float>(fontSize)) * 0.5f - 1.0f,
+                     fontSize,
+                     choice.enabled ? RAYWHITE : Color{156, 166, 184, 255});
+        }
+    }
+
+    static void renderVisualizationChoiceButtons(const ControlState& control,
+                                                 const std::vector<Rectangle>& buttons,
+                                                 const Vector2& mouse) {
+        for (std::size_t index = 0; index < buttons.size() && index < control.choices.size(); ++index) {
+            const ChoiceState& choice = control.choices[index];
+            const Rectangle button = buttons[index];
+            const bool hovered = CheckCollisionPointRec(mouse, button);
+            const Color fill = !choice.enabled
+                ? Color{42, 46, 56, 228}
+                : choice.selected
+                    ? (hovered ? Color{62, 88, 132, 255} : Color{48, 72, 112, 255})
+                    : (hovered ? Color{42, 54, 72, 255} : Color{32, 42, 58, 255});
+            const Color border = choice.selected ? Color{118, 174, 255, 255}
+                                                 : Color{62, 78, 104, 255};
+
+            DrawRectangleRounded(button, 0.18f, 8, fill);
+            DrawRectangleRoundedLines(button, 0.18f, 8, border);
+
+            const bool diagnostic =
+                choice.value == static_cast<int>(net::SessionVisualizationMode::Diagnostic);
+            const float symbolSize = std::max(
+                28.0f,
+                std::min(button.width - 18.0f, std::min(button.height - 42.0f, 82.0f)));
+            const Rectangle symbolBounds{
+                button.x + (button.width - symbolSize) * 0.5f,
+                button.y + 8.0f,
+                symbolSize,
+                symbolSize
+            };
+            renderVisualizationSymbol(symbolBounds, diagnostic, choice.selected);
+
+            const Rectangle labelBounds{
+                button.x + 6.0f,
+                button.y + button.height - 30.0f,
+                button.width - 12.0f,
+                24.0f
+            };
+            drawCenteredTextAdaptive(choice.label,
+                                     labelBounds,
+                                     16,
+                                     13,
+                                     choice.selected ? RAYWHITE : Color{204, 214, 230, 255});
+        }
+    }
+
+    static void renderVisualizationSymbol(Rectangle bounds,
+                                          bool diagnostic,
+                                          bool selected) {
+        DrawRectangleRounded(bounds,
+                             0.22f,
+                             8,
+                             selected ? Color{16, 24, 36, 255}
+                                      : Color{12, 17, 25, 255});
+        DrawRectangleRoundedLines(bounds,
+                                  0.22f,
+                                  8,
+                                  Fade(Color{150, 176, 220, 255}, selected ? 0.68f : 0.36f));
+        if (diagnostic) {
+            drawGhostSymbol(bounds, selected);
+        } else {
+            drawSolidSymbol(bounds, selected);
+        }
+    }
+
+    static void drawGhostSymbol(Rectangle bounds, bool selected) {
+        const Color ghost = selected ? Color{130, 198, 255, 230}
+                                     : Color{110, 180, 245, 190};
+        const float centerX = bounds.x + bounds.width * 0.5f;
+        const float headRadius = bounds.width * 0.17f;
+        const float headY = bounds.y + bounds.height * 0.25f;
+        const float bodyWidth = bounds.width * 0.44f;
+        const float bodyHeight = bounds.height * 0.38f;
+        const Rectangle body{
+            centerX - bodyWidth * 0.5f,
+            headY + headRadius * 1.35f,
+            bodyWidth,
+            bodyHeight
+        };
+
+        DrawCircleLines(static_cast<int>(centerX),
+                        static_cast<int>(headY),
+                        headRadius,
+                        ghost);
+        DrawRectangleRoundedLines(body, 0.28f, 8, ghost);
+    }
+
+    static void drawSolidSymbol(Rectangle bounds, bool selected) {
+        const Color solid = selected ? Color{255, 146, 72, 255}
+                                     : Color{232, 126, 64, 235};
+        const float centerX = bounds.x + bounds.width * 0.5f;
+        const float headRadius = bounds.width * 0.17f;
+        const float headY = bounds.y + bounds.height * 0.25f;
+        const float torsoWidth = bounds.width * 0.44f;
+        const float torsoHeight = bounds.height * 0.38f;
+        DrawCircleV(Vector2{centerX, headY}, headRadius, solid);
+        DrawRectangleRounded(Rectangle{centerX - torsoWidth * 0.5f,
+                                       headY + headRadius * 1.35f,
+                                       torsoWidth,
+                                       torsoHeight},
+                             0.32f,
+                             6,
+                             solid);
     }
 
     static void renderSlider(const ControlState& control,
@@ -1125,31 +1376,35 @@ private:
             DrawRectangleRounded(rowRect, 0.03f, 8, fill);
             DrawRectangleRoundedLines(rowRect, 0.03f, 8, Color{82, 108, 156, 255});
 
-            drawTextFit(row.label,
-                        rowRect.x + 14.0f,
-                        rowRect.y + 10.0f,
-                        rowRect.width - 28.0f,
-                        22,
-                        RAYWHITE);
-            drawTextFit(row.detailLine,
-                        rowRect.x + 14.0f,
-                        rowRect.y + 39.0f,
-                        rowRect.width - 28.0f,
-                        16,
-                        Color{175, 186, 202, 255});
-            drawTextFit(row.metricsLine,
-                        rowRect.x + 14.0f,
-                        rowRect.y + 64.0f,
-                        rowRect.width - 28.0f,
-                        16,
-                        Color{148, 205, 218, 255});
+            drawTextAdaptive(row.label,
+                             rowRect.x + 14.0f,
+                             rowRect.y + 10.0f,
+                             rowRect.width - 28.0f,
+                             22,
+                             17,
+                             RAYWHITE);
+            drawTextAdaptive(row.detailLine,
+                             rowRect.x + 14.0f,
+                             rowRect.y + 39.0f,
+                             rowRect.width - 28.0f,
+                             16,
+                             13,
+                             Color{175, 186, 202, 255});
+            drawTextAdaptive(row.metricsLine,
+                             rowRect.x + 14.0f,
+                             rowRect.y + 64.0f,
+                             rowRect.width - 28.0f,
+                             16,
+                             13,
+                             Color{148, 205, 218, 255});
             if (!row.statsLine.empty()) {
-                drawTextFit(row.statsLine,
-                            rowRect.x + 14.0f,
-                            rowRect.y + 84.0f,
-                            rowRect.width - 28.0f,
-                            15,
-                            Color{214, 191, 122, 255});
+                drawTextAdaptive(row.statsLine,
+                                 rowRect.x + 14.0f,
+                                 rowRect.y + 84.0f,
+                                 rowRect.width - 28.0f,
+                                 15,
+                                 12,
+                                 Color{214, 191, 122, 255});
             }
         }
         EndScissorMode();
@@ -1169,18 +1424,20 @@ private:
         }
 
         const EditorLayout editorLayout = buildEditorLayout(layout, editor);
-        drawTextFit(editor.title,
-                    editorLayout.header.x,
-                    editorLayout.header.y + 4.0f,
-                    editorLayout.header.width,
-                    24,
-                    RAYWHITE);
-        drawTextFit(editor.subtitle,
-                    editorLayout.header.x,
-                    editorLayout.header.y + 42.0f,
-                    editorLayout.header.width,
-                    16,
-                    Color{174, 184, 201, 255});
+        drawTextAdaptive(editor.title,
+                         editorLayout.header.x,
+                         editorLayout.header.y + 4.0f,
+                         editorLayout.header.width,
+                         24,
+                         18,
+                         RAYWHITE);
+        drawTextAdaptive(editor.subtitle,
+                         editorLayout.header.x,
+                         editorLayout.header.y + 42.0f,
+                         editorLayout.header.width,
+                         16,
+                         13,
+                         Color{174, 184, 201, 255});
 
         renderEditorSlider(editor.latency, editorLayout.latency, mouse);
         renderEditorSlider(editor.loss, editorLayout.loss, mouse);
@@ -1223,12 +1480,13 @@ private:
                              8,
                              cardFill(control, hovered));
         DrawRectangleRoundedLines(layout.card, 0.03f, 8, cardBorder(control));
-        drawTextFit(control.label,
-                    layout.card.x + 14.0f,
-                    layout.card.y + 8.0f,
-                    layout.card.width - 28.0f,
-                    20,
-                    RAYWHITE);
+        drawTextAdaptive(control.label,
+                         layout.card.x + 14.0f,
+                         layout.card.y + 8.0f,
+                         layout.card.width - 28.0f,
+                         20,
+                         15,
+                         RAYWHITE);
         renderSlider(control, layout.track, layout.bounds, mouse);
     }
 };

@@ -1583,8 +1583,73 @@ void testHostSessionFlowExposesGhostTrackForLaggedJoinPlayer() {
            "host clients should observe the join participant's ghost-control track leading the manipulated actor under added latency");
 
     const std::vector<std::string> hudLines = host.clientRuntime()->compactHudLines();
-    expect(containsLine(hudLines, "Ghosts 1 | Matched 1 | Offset"),
-           "host compact hud should expose ghost-track debug state for lagged join participants");
+    expect(hudLines.empty(),
+           "host compact hud should stay removed while ghost tracks remain available in typed view state");
+}
+
+void testRealityModeHidesGhostPresentationButKeepsControlTrack() {
+    ensureTestLevelExists(6);
+
+    net::SessionLaunchConfig hostConfig =
+        net::makeHostSessionLaunchConfig(6, "reality-host", 45176u);
+    hostConfig.visualizationMode = net::SessionVisualizationMode::Reality;
+    hostConfig.clientSessionId = 0x1C300001u;
+    hostConfig.clientConnectTimeoutUs = 400'000u;
+
+    net::SessionFlowController host(hostConfig);
+    expect(host.start(), "hosted session should start before the Reality-mode flow test");
+
+    const bool hostRunning = waitForPredicate([&]() {
+        host.update(1.0f / 60.0f, nullptr);
+        return host.state() == net::SessionFlowState::Running;
+    }, std::chrono::milliseconds(900));
+    expect(hostRunning, "hosted session should reach running state before the Reality join starts");
+
+    net::SessionLaunchConfig joinConfig =
+        net::makeJoinSessionLaunchConfig("127.0.0.1",
+                                         host.config().proxyClientListenPort,
+                                         "reality-joiner");
+    joinConfig.clientSessionId = 0x1C300002u;
+    joinConfig.clientConnectTimeoutUs = 400'000u;
+    joinConfig.clientHelloRetryIntervalUs = 20'000u;
+
+    net::SessionFlowController join(joinConfig);
+    expect(join.start(), "Reality-mode join session should start successfully");
+
+    const bool connected = waitForSessionFlowPredicate(
+        &host,
+        &join,
+        [&]() {
+            return join.state() == net::SessionFlowState::Running &&
+                   join.clientRuntime() != nullptr &&
+                   join.clientRuntime()->hasSnapshot() &&
+                   host.hostedSessionCount() == 2u;
+        },
+        std::chrono::milliseconds(1400));
+    expect(connected,
+           "Reality-mode join should connect before ghost-presentation assertions");
+
+    host.clientRuntime()->setLocalNetworkSettingsForTest(180.0f, 0.0f);
+
+    InputHandler3D::InputState hostInput;
+    hostInput.moveInput = Vector2{1.0f, 0.0f};
+    for (int frame = 0; frame < 60; ++frame) {
+        host.update(1.0f / 60.0f, &hostInput);
+        join.update(1.0f / 60.0f, nullptr);
+    }
+
+    const net::WorldSnapshot* latestSnapshot = join.clientRuntime()->latestSnapshot();
+    const client::ClientViewState joinView = join.clientRuntime()->clientViewState();
+    expect(latestSnapshot != nullptr &&
+               latestSnapshot->sessionMetadata.visualizationMode ==
+                   net::SessionVisualizationMode::Reality &&
+               !latestSnapshot->controlRemotePlayers.empty(),
+           "Reality mode should keep replicated control tracks available in snapshots");
+    expect(joinView.remotePlayers.size() == 1u &&
+               joinView.remotePlayerGhosts.empty(),
+           "Reality mode should hide ghost-control presentation while preserving solid players");
+    expect(!containsLine(join.clientRuntime()->compactHudLines(), "Ghosts"),
+           "Reality mode should hide ghost-track debug HUD summaries");
 }
 
 void testFailedJoinReturnsToMenuWithErrorAndRetryPath() {
@@ -2823,6 +2888,7 @@ int main() {
         testHostLaunchSpawnsConfiguredBotsIntoHostedRoster();
         testJoinClientCanConnectAndPlayThroughLocalProxyPath();
         testJoinSessionFlowExposesGhostTrackForDelayedRemotePlayers();
+        testRealityModeHidesGhostPresentationButKeepsControlTrack();
         testDiscoverySelectedJoinPreservesBaselineGameplayRosterAndTeamScore();
         testLateJoinReceivesCurrentAuthoritativeSnapshotStateOnHostedFlow();
         testFailedJoinReturnsToMenuWithErrorAndRetryPath();

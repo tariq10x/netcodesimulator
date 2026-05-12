@@ -86,12 +86,15 @@ bool nearlyEqual(float lhs, float rhs, float epsilon = 0.001f) {
 client::ClientViewState makeRichClientViewState(sim::PaneSlot slot = sim::PaneSlot::Left,
                                                 bool focused = true,
                                                 bool botsFrozen = true,
-                                                bool botsCanShoot = true) {
+                                                bool botsCanShoot = true,
+                                                net::SessionVisualizationMode visualizationMode =
+                                                    net::SessionVisualizationMode::Diagnostic) {
     client::PresentationStateSubsystem subsystem;
 
     net::HostedSessionMetadata sessionMetadata;
     sessionMetadata.sessionLabel = "Study Session";
     sessionMetadata.shotEvaluationMode = net::ShotEvaluationMode::LivePosition;
+    sessionMetadata.visualizationMode = visualizationMode;
     sessionMetadata.publicJoinPort = 41000u;
     sessionMetadata.botsFrozen = botsFrozen;
     sessionMetadata.botsCanShoot = botsCanShoot;
@@ -638,6 +641,9 @@ void testPresentationStateSubsystemBuildsTypedScoreboardAndDiagnosticsState() {
                viewState.diagnostics.shotStudy.activeRuleLabel == "Live Position" &&
                !viewState.diagnostics.localNetworkSummaryLines.empty(),
            "typed client view state should preserve local-network diagnostics semantics");
+    expect(viewState.hostedSession.visualizationModeLabel == "Diagnostic" &&
+               viewState.hostedSession.ghostTracksVisible,
+           "typed hosted-session view state should expose diagnostic ghost visibility");
     expect(viewState.remotePlayers.size() == 1u &&
                viewState.remotePlayers[0].team == sim::TeamId::Defender &&
                nearlyEqual(viewState.remotePlayers[0].eyePosition.x, 10.0f) &&
@@ -654,11 +660,8 @@ void testPresentationStateSubsystemBuildsTypedScoreboardAndDiagnosticsState() {
     expect(client::PresentationStateSubsystem::teamScoreSummary(viewState).find("Attackers 4") != std::string::npos &&
                !containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
                              "Team Kills") &&
-               containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
-                            net::shotEvaluationModeSummary(net::ShotEvaluationMode::LivePosition)) &&
-               containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
-                            "Prediction smooth | Pending 1 | Replayed 3 | Correction snap"),
-           "typed presentation helpers should keep score data in the compact-score widget while still exposing study and prediction facts through compact hud summaries");
+               client::PresentationStateSubsystem::compactHudLines(viewState).empty(),
+           "typed presentation helpers should keep score, health, and diagnostics out of the removed player HUD");
 }
 
 void testHostedSessionBotPolicyLabelsPeaceMode() {
@@ -719,11 +722,8 @@ void testPresentationStateSubsystemBuildsTypedReplayPaneState() {
                viewState.replay.spectator.followTargetLabel == "Replay Target" &&
                viewState.replay.spectator.canReturnToCharacter,
            "typed replay presentation state should preserve replay rule, binding, and spectator context without parsing the status line");
-    expect(containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
-                        "Replay Rule Seen Position") &&
-               containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
-                            "Replay View Spectator Follow Third Person | Target Replay Target | Return available"),
-           "typed replay presentation helpers should keep study-facing rule and spectator summaries visible during playback");
+    expect(client::PresentationStateSubsystem::compactHudLines(viewState).empty(),
+           "typed replay presentation helpers should keep replay diagnostics out of the removed player HUD");
     expectContains(client::ClientPresentation::paneOverlayLabel(viewState),
                    "Replay Camera B",
                    "replay pane labels should surface the pane-local replay binding from typed view state");
@@ -750,7 +750,7 @@ void testClientPresentationBuildsRenderFrameFromClientViewState() {
                frame.remoteEnemies.size() == 1u &&
                frame.combatTraces.size() == 1u,
            "render frame should carry remote player, remote enemy, and combat-trace drawables");
-    expect(frame.hud.lines.size() == 6u &&
+    expect(frame.hud.lines.empty() &&
                frame.compactScore.visible &&
                frame.compactScore.score.localIdentity == "Local Player" &&
                frame.killFeed.visible &&
@@ -760,13 +760,10 @@ void testClientPresentationBuildsRenderFrameFromClientViewState() {
            "render frame should preserve compact score, kill-feed, hud, and scoreboard overlays");
     expect(nearlyEqual(frame.arena.dimFactor, 1.0f),
            "render frames should carry the typed study-presentation dim factor through the arena layer");
-    expect(containsLine(frame.hud.lines,
-                        "Ghosts 1 | Matched 1 | Offset") &&
-               containsLine(frame.hud.lines,
-                        net::shotEvaluationModeSummary(net::ShotEvaluationMode::LivePosition)) &&
-               containsLine(frame.hud.lines,
-                            "Shot authoritative_miss | live_state"),
-           "render frame hud should expose ghost-track debugging plus human-readable shot-rule explanations and shot study summaries from typed diagnostics");
+    expect(!containsLine(frame.hud.lines, "Ghosts") &&
+               !containsLine(frame.hud.lines, "Shot") &&
+               !containsLine(frame.hud.lines, "Prediction"),
+           "render frame hud should omit all player-facing text after the HUD removal");
     expect(frame.teamMenu.visible &&
                frame.teamMenu.currentTeamLabel == "Attackers" &&
                frame.teamMenu.selectedTeamLabel == "Defenders",
@@ -813,6 +810,61 @@ void testClientPresentationSuppressesOverlappedGhostDrawables() {
            "render frames should draw ghosts once latency creates a visible separation from the solid actor");
 }
 
+void testRealityVisualizationSuppressesGhostPresentation() {
+    Arena3D arena;
+    client::ClientPresentation presentation;
+    const client::ClientViewState viewState =
+        makeRichClientViewState(sim::PaneSlot::Left,
+                                true,
+                                true,
+                                true,
+                                net::SessionVisualizationMode::Reality);
+
+    expect(viewState.hostedSession.visualizationModeLabel == "Reality" &&
+               !viewState.hostedSession.ghostTracksVisible,
+           "Reality visualization should surface a typed no-ghost presentation state");
+    expect(viewState.remotePlayers.size() == 1u &&
+               viewState.remotePlayerGhosts.empty(),
+           "Reality visualization should omit ghost-control views while preserving solid players");
+    expect(!containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
+                         "Ghosts"),
+           "Reality visualization should suppress ghost-track debug HUD summaries");
+
+    client::ClientViewState defensiveView = viewState;
+    defensiveView.remotePlayerGhosts.push_back(client::RemotePlayerView{
+        8,
+        sim::Vec3{12.0f, Config::PLAYER_EYE_HEIGHT, -10.0f},
+        0.0f,
+        0.0f,
+        1.0f,
+        true,
+        sim::TeamId::Defender,
+        true
+    });
+    const client::RenderFrame defensiveFrame =
+        presentation.build(client::ClientPresentationInputs{defensiveView, &arena, nullptr});
+    expect(defensiveFrame.remotePlayers.size() == 1u &&
+               defensiveFrame.remotePlayerGhosts.empty(),
+           "render-frame construction should defensively hide ghosts when Reality mode is active");
+}
+
+void testRemovedHudKeepsStructuredOverlays() {
+    Arena3D arena;
+    client::ClientPresentation presentation;
+    client::ClientViewState viewState = makeRichClientViewState();
+
+    expect(client::PresentationStateSubsystem::compactHudLines(viewState).empty(),
+           "removed HUD should suppress bottom-left compact text lines");
+
+    const client::RenderFrame frame =
+        presentation.build(client::ClientPresentationInputs{viewState, &arena, nullptr});
+    expect(frame.hud.lines.empty() &&
+               frame.compactScore.visible &&
+               frame.compactScore.score.attackerScore == viewState.compactScore.attackerScore &&
+               frame.compactScore.score.defenderScore == viewState.compactScore.defenderScore,
+           "removed HUD should not disable the separate compact score overlay");
+}
+
 void testDeadPlayersRenderAsDownAndHudReflectsRespawnWindow() {
     Arena3D arena;
     client::ClientPresentation presentation;
@@ -821,9 +873,8 @@ void testDeadPlayersRenderAsDownAndHudReflectsRespawnWindow() {
     viewState.remotePlayers.front().alive = false;
     viewState.remotePlayers.front().healthPercent = 0.0f;
 
-    expect(containsLine(client::PresentationStateSubsystem::compactHudLines(viewState),
-                        "Down | Team Attackers"),
-           "compact hud should switch from health to a down-state summary when the local player is dead");
+    expect(client::PresentationStateSubsystem::compactHudLines(viewState).empty(),
+           "compact hud should stay removed when the local player is down");
 
     const client::RenderFrame frame = presentation.build(
         client::ClientPresentationInputs{viewState, &arena, nullptr});
@@ -1126,15 +1177,14 @@ void testSplitScreenSharedOverlaysPreserveStudyHudAndReplayStateGlobally() {
     const client::SplitScreenRenderFrame splitFrame =
         presentation.buildSplitScreen(splitView, arena, &combatTraces);
 
-    expect(containsLine(splitFrame.sharedOverlays.hud.lines,
-                        net::shotEvaluationModeSummary(net::ShotEvaluationMode::LivePosition)) &&
+    expect(splitFrame.sharedOverlays.hud.lines.empty() &&
                splitFrame.sharedOverlays.replay.statusLine == splitView.sharedOverlays.replay.statusLine &&
                splitFrame.sharedOverlays.replay.rule.label == splitView.sharedOverlays.replay.rule.label &&
                splitFrame.sharedOverlays.replay.paneBinding.bindingLabel ==
                    splitView.sharedOverlays.replay.paneBinding.bindingLabel &&
                splitFrame.sharedOverlays.replay.spectator.followTargetLabel ==
                    splitView.sharedOverlays.replay.spectator.followTargetLabel,
-           "shared split-screen overlays should carry one global study hud and replay status instead of duplicating per-pane overlays");
+           "shared split-screen overlays should carry replay status without restoring the removed HUD");
 }
 
 void testRuntimeOverlayWidgetsUseSharedTypographyService() {
@@ -1200,6 +1250,8 @@ int main() {
         testPresentationStateSubsystemBuildsTypedReplayPaneState();
         testClientPresentationBuildsRenderFrameFromClientViewState();
         testClientPresentationSuppressesOverlappedGhostDrawables();
+        testRealityVisualizationSuppressesGhostPresentation();
+        testRemovedHudKeepsStructuredOverlays();
         testDeadPlayersRenderAsDownAndHudReflectsRespawnWindow();
         testAppFlowKeepsPaneLocalObservationDistinctFromSessionSpectating();
         testSplitScreenContractsKeepStablePaneBindingsAndCameraState();

@@ -448,6 +448,12 @@ struct ClientRuntimeTestAccess {
         const client::ClientViewState viewState = client.buildClientViewState();
         return client.buildRenderFrame(viewState);
     }
+
+    static void applyRuntimeSettingsAction(
+        ClientRuntime& client,
+        const RuntimeSettingsOverlay::Action& action) {
+        client.applyRuntimeSettingsAction(action);
+    }
 };
 #endif
 

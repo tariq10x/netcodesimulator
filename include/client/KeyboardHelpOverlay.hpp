@@ -461,12 +461,12 @@ private:
                               Side::Right);
         appendKeyboardCallout(&callouts,
                               {KEY_U},
-                              "Open settings: prediction and network",
+                              "Open settings: HUD, visualization and network",
                               runtimeColor(),
                               Side::Right);
         appendKeyboardCallout(&callouts,
                               {KEY_J},
-                              "Open settings: prediction and network",
+                              "Open settings: HUD, visualization and network",
                               runtimeColor(),
                               Side::Right);
         appendKeyboardCallout(&callouts,

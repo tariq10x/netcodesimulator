@@ -467,6 +467,24 @@ bool tryReadShotEvaluationMode(std::uint8_t rawMode, ShotEvaluationMode* modeOut
     }
 }
 
+bool tryReadSessionVisualizationMode(std::uint8_t rawMode,
+                                     SessionVisualizationMode* modeOut) {
+    if (modeOut == nullptr) {
+        return false;
+    }
+
+    switch (rawMode) {
+        case static_cast<std::uint8_t>(SessionVisualizationMode::Diagnostic):
+            *modeOut = SessionVisualizationMode::Diagnostic;
+            return true;
+        case static_cast<std::uint8_t>(SessionVisualizationMode::Reality):
+            *modeOut = SessionVisualizationMode::Reality;
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool tryReadRuntimeParamScope(std::uint8_t rawScope, RuntimeParamScope* scopeOut) {
     if (scopeOut == nullptr) {
         return false;
@@ -821,6 +839,7 @@ void writeHostedSessionMetadata(ByteWriter& writer, const HostedSessionMetadata&
     writer.writeU16(metadata.publicJoinPort);
     writer.writeU16(metadata.maxHumanPlayers);
     writer.writeU8(static_cast<std::uint8_t>(metadata.shotEvaluationMode));
+    writer.writeU8(static_cast<std::uint8_t>(metadata.visualizationMode));
     writer.writeBool(metadata.botsFrozen);
     writer.writeBool(metadata.botsCanShoot);
     writer.writeBool(metadata.studyEventLoggingEnabled);
@@ -833,6 +852,7 @@ ParseError readHostedSessionMetadata(ByteReader& reader, HostedSessionMetadata* 
     }
 
     std::uint8_t shotMode = 0u;
+    std::uint8_t visualizationMode = 0u;
     if (!reader.readString(&metadata->sessionLabel) ||
         !reader.readString(&metadata->hostPlayerName) ||
         !reader.readU16(&metadata->hostPeerId) ||
@@ -841,6 +861,7 @@ ParseError readHostedSessionMetadata(ByteReader& reader, HostedSessionMetadata* 
         !reader.readU16(&metadata->publicJoinPort) ||
         !reader.readU16(&metadata->maxHumanPlayers) ||
         !reader.readU8(&shotMode) ||
+        !reader.readU8(&visualizationMode) ||
         !reader.readBool(&metadata->botsFrozen) ||
         !reader.readBool(&metadata->botsCanShoot) ||
         !reader.readBool(&metadata->studyEventLoggingEnabled) ||
@@ -850,6 +871,9 @@ ParseError readHostedSessionMetadata(ByteReader& reader, HostedSessionMetadata* 
 
     if (!tryReadShotEvaluationMode(shotMode, &metadata->shotEvaluationMode)) {
         return ParseError::InvalidShotEvaluationMode;
+    }
+    if (!tryReadSessionVisualizationMode(visualizationMode, &metadata->visualizationMode)) {
+        return ParseError::InvalidSessionVisualizationMode;
     }
 
     return ParseError::None;
@@ -1247,6 +1271,8 @@ const char* toString(ParseError error) {
             return "invalid_runtime_reconciliation_strategy";
         case ParseError::InvalidSessionActionKind:
             return "invalid_session_action_kind";
+        case ParseError::InvalidSessionVisualizationMode:
+            return "invalid_session_visualization_mode";
     }
     return "unknown";
 }
@@ -1255,6 +1281,14 @@ const char* toString(ShotEvaluationMode mode) {
     switch (mode) {
         case ShotEvaluationMode::SeenPosition: return "Seen Position";
         case ShotEvaluationMode::LivePosition: return "Live Position";
+    }
+    return "Unknown";
+}
+
+const char* toString(SessionVisualizationMode mode) {
+    switch (mode) {
+        case SessionVisualizationMode::Diagnostic: return "Diagnostic";
+        case SessionVisualizationMode::Reality: return "Reality";
     }
     return "Unknown";
 }
@@ -1276,6 +1310,27 @@ bool tryParseShotEvaluationModeValue(float rawValue, ShotEvaluationMode* modeOut
     }
 
     return tryReadShotEvaluationMode(static_cast<std::uint8_t>(rounded), modeOut);
+}
+
+bool tryParseSessionVisualizationMode(std::uint8_t rawMode,
+                                      SessionVisualizationMode* modeOut) {
+    return tryReadSessionVisualizationMode(rawMode, modeOut);
+}
+
+bool tryParseSessionVisualizationModeValue(float rawValue,
+                                           SessionVisualizationMode* modeOut) {
+    if (modeOut == nullptr || !std::isfinite(rawValue)) {
+        return false;
+    }
+
+    const float rounded = std::round(rawValue);
+    if (std::fabs(rawValue - rounded) > 0.0001f ||
+        rounded < 0.0f ||
+        rounded > static_cast<float>(std::numeric_limits<std::uint8_t>::max())) {
+        return false;
+    }
+
+    return tryReadSessionVisualizationMode(static_cast<std::uint8_t>(rounded), modeOut);
 }
 
 bool tryParseSessionTickRateHzValue(float rawValue, std::uint16_t* tickRateHzOut) {
@@ -1435,6 +1490,7 @@ bool operator==(const HostedSessionMetadata& lhs, const HostedSessionMetadata& r
            lhs.publicJoinPort == rhs.publicJoinPort &&
            lhs.maxHumanPlayers == rhs.maxHumanPlayers &&
            lhs.shotEvaluationMode == rhs.shotEvaluationMode &&
+           lhs.visualizationMode == rhs.visualizationMode &&
            lhs.botsFrozen == rhs.botsFrozen &&
            lhs.botsCanShoot == rhs.botsCanShoot &&
            lhs.studyEventLoggingEnabled == rhs.studyEventLoggingEnabled &&

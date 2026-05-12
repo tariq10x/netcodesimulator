@@ -118,6 +118,7 @@ Supported flags:
 - Host or join LAN sessions with players and bots.
 - Adjust latency, packet loss, tick rate, snapshot rate, and transport behavior.
 - Compare prediction, reconciliation, interpolation, server authority, and shot evaluation rules.
+- Switch hosted sessions between Diagnostic visualization, which shows ghost tracks, and Reality visualization, which hides diagnostic ghosts from the player view.
 - Record and replay sessions.
 - Export gameplay and study event logs.
 - Build levels with the level editor.

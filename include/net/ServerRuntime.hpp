@@ -43,6 +43,7 @@ struct ServerConfig {
     int levelSlot{-1};
     std::uint32_t levelHash{0u};
     ShotEvaluationMode shotEvaluationMode{ShotEvaluationMode::SeenPosition};
+    SessionVisualizationMode visualizationMode{SessionVisualizationMode::Diagnostic};
     server::BotDirectorConfig botDirector{};
 };
 
@@ -100,6 +101,9 @@ private:
     bool handleStudyEventLoggingChange(ClientSession& session,
                                        const RuntimeParamChangeRequest& request,
                                        RuntimeParamApplyResult* resultOut);
+    bool handleSessionVisualizationModeChange(ClientSession& session,
+                                              const RuntimeParamChangeRequest& request,
+                                              RuntimeParamApplyResult* resultOut);
     bool handleBotDirectorActiveChange(ClientSession& session,
                                        const RuntimeParamChangeRequest& request,
                                        RuntimeParamApplyResult* resultOut);

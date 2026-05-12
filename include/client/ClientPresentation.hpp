@@ -230,6 +230,10 @@ private:
         const ClientViewState& viewState,
         const Arena3D& arena,
         const std::vector<RemotePlayerRenderItem>& solidPlayers) {
+        if (!viewState.hostedSession.ghostTracksVisible) {
+            return {};
+        }
+
         std::vector<RemotePlayerRenderItem> ghosts =
             buildRemotePlayers(viewState.remotePlayerGhosts, arena);
         ghosts.erase(std::remove_if(ghosts.begin(),

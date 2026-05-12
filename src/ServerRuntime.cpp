@@ -306,6 +306,7 @@ HostedSessionMetadata makeHostedSessionMetadata(const ServerConfig& config,
     metadata.publicJoinPort = config.publicJoinPort;
     metadata.maxHumanPlayers = sessionMetadata.maxHumanPlayers;
     metadata.shotEvaluationMode = config.shotEvaluationMode;
+    metadata.visualizationMode = config.visualizationMode;
     metadata.botsFrozen = botsFrozen;
     metadata.botsCanShoot = botsCanShoot;
     metadata.studyEventLoggingEnabled = config.studyEventLoggingEnabled;
@@ -2531,6 +2532,42 @@ bool ServerRuntime::handleStudyEventLoggingChange(ClientSession& session,
     return accepted;
 }
 
+bool ServerRuntime::handleSessionVisualizationModeChange(
+    ClientSession& session,
+    const RuntimeParamChangeRequest& request,
+    RuntimeParamApplyResult* resultOut) {
+    RuntimeParamApplyResult result;
+    result.scope = request.scope;
+    result.targetId = request.targetId;
+    result.key = request.key;
+    result.value = request.value;
+    result.applied = false;
+    result.stagedApplyBoundary = sim::StagedApplyBoundary::NextSnapshot;
+    result.message = "rejected";
+
+    bool accepted = false;
+    if (session.peerId != kAuthoritativeHostPeerId) {
+        result.message = "host_only";
+    } else {
+        SessionVisualizationMode mode;
+        if (!tryParseSessionVisualizationModeValue(request.value, &mode)) {
+            result.message = "invalid_visualization_mode";
+        } else {
+            config_.visualizationMode = mode;
+            refreshAuthoritativeWorldStateMetadata();
+            result.value = static_cast<float>(static_cast<std::uint8_t>(mode));
+            result.applied = true;
+            result.message = "applied";
+            accepted = true;
+        }
+    }
+
+    if (resultOut != nullptr) {
+        *resultOut = result;
+    }
+    return accepted;
+}
+
 bool ServerRuntime::handleBotDirectorActiveChange(ClientSession& session,
                                                   const RuntimeParamChangeRequest& request,
                                                   RuntimeParamApplyResult* resultOut) {
@@ -2895,6 +2932,8 @@ bool ServerRuntime::handleControlPayload(std::uint16_t peerId,
                         ? handleSessionSnapshotRateChange(*session, message, &result)
                     : message.scope == RuntimeParamScope::Session && message.key == "sv.event_logging"
                         ? handleStudyEventLoggingChange(*session, message, &result)
+                    : message.scope == RuntimeParamScope::Session && message.key == "sv.visualization_mode"
+                        ? handleSessionVisualizationModeChange(*session, message, &result)
                     : message.scope == RuntimeParamScope::Session && message.key == "sv.bots_active"
                         ? handleBotDirectorActiveChange(*session, message, &result)
                     : message.scope == RuntimeParamScope::Session && message.key == "sv.bots_can_shoot"
