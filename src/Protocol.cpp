@@ -840,6 +840,12 @@ void writeHostedSessionMetadata(ByteWriter& writer, const HostedSessionMetadata&
     writer.writeU16(metadata.maxHumanPlayers);
     writer.writeU8(static_cast<std::uint8_t>(metadata.shotEvaluationMode));
     writer.writeU8(static_cast<std::uint8_t>(metadata.visualizationMode));
+    writer.writeString(metadata.characterProfileName);
+    const character::CharacterAppearance normalizedAppearance =
+        character::normalizeAppearance(metadata.characterAppearance);
+    writer.writeF32(normalizedAppearance.shoulderWidth);
+    writer.writeF32(normalizedAppearance.shoulderHeight);
+    writer.writeF32(normalizedAppearance.shoulderAngleDeg);
     writer.writeBool(metadata.botsFrozen);
     writer.writeBool(metadata.botsCanShoot);
     writer.writeBool(metadata.studyEventLoggingEnabled);
@@ -853,6 +859,7 @@ ParseError readHostedSessionMetadata(ByteReader& reader, HostedSessionMetadata* 
 
     std::uint8_t shotMode = 0u;
     std::uint8_t visualizationMode = 0u;
+    character::CharacterAppearance appearance;
     if (!reader.readString(&metadata->sessionLabel) ||
         !reader.readString(&metadata->hostPlayerName) ||
         !reader.readU16(&metadata->hostPeerId) ||
@@ -862,6 +869,10 @@ ParseError readHostedSessionMetadata(ByteReader& reader, HostedSessionMetadata* 
         !reader.readU16(&metadata->maxHumanPlayers) ||
         !reader.readU8(&shotMode) ||
         !reader.readU8(&visualizationMode) ||
+        !reader.readString(&metadata->characterProfileName) ||
+        !reader.readF32(&appearance.shoulderWidth) ||
+        !reader.readF32(&appearance.shoulderHeight) ||
+        !reader.readF32(&appearance.shoulderAngleDeg) ||
         !reader.readBool(&metadata->botsFrozen) ||
         !reader.readBool(&metadata->botsCanShoot) ||
         !reader.readBool(&metadata->studyEventLoggingEnabled) ||
@@ -874,6 +885,10 @@ ParseError readHostedSessionMetadata(ByteReader& reader, HostedSessionMetadata* 
     }
     if (!tryReadSessionVisualizationMode(visualizationMode, &metadata->visualizationMode)) {
         return ParseError::InvalidSessionVisualizationMode;
+    }
+    metadata->characterAppearance = character::normalizeAppearance(appearance);
+    if (metadata->characterProfileName.empty()) {
+        metadata->characterProfileName = "Default";
     }
 
     return ParseError::None;
@@ -1491,6 +1506,10 @@ bool operator==(const HostedSessionMetadata& lhs, const HostedSessionMetadata& r
            lhs.maxHumanPlayers == rhs.maxHumanPlayers &&
            lhs.shotEvaluationMode == rhs.shotEvaluationMode &&
            lhs.visualizationMode == rhs.visualizationMode &&
+           lhs.characterProfileName == rhs.characterProfileName &&
+           lhs.characterAppearance.shoulderWidth == rhs.characterAppearance.shoulderWidth &&
+           lhs.characterAppearance.shoulderHeight == rhs.characterAppearance.shoulderHeight &&
+           lhs.characterAppearance.shoulderAngleDeg == rhs.characterAppearance.shoulderAngleDeg &&
            lhs.botsFrozen == rhs.botsFrozen &&
            lhs.botsCanShoot == rhs.botsCanShoot &&
            lhs.studyEventLoggingEnabled == rhs.studyEventLoggingEnabled &&

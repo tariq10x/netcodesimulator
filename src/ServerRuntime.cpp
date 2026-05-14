@@ -307,6 +307,9 @@ HostedSessionMetadata makeHostedSessionMetadata(const ServerConfig& config,
     metadata.maxHumanPlayers = sessionMetadata.maxHumanPlayers;
     metadata.shotEvaluationMode = config.shotEvaluationMode;
     metadata.visualizationMode = config.visualizationMode;
+    metadata.characterProfileName =
+        config.characterProfileName.empty() ? "Default" : config.characterProfileName;
+    metadata.characterAppearance = character::normalizeAppearance(config.characterAppearance);
     metadata.botsFrozen = botsFrozen;
     metadata.botsCanShoot = botsCanShoot;
     metadata.studyEventLoggingEnabled = config.studyEventLoggingEnabled;

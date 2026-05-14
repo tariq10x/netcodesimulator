@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "character/CharacterProfile.hpp"
 #include "sim/SimulationTypes.hpp"
 
 namespace net {
@@ -14,7 +15,7 @@ namespace net {
 using ByteBuffer = std::vector<std::uint8_t>;
 
 constexpr std::uint32_t kProtocolMagic = 0x4D53544Cu;  // "LTSM" as little-endian bytes.
-constexpr std::uint16_t kProtocolVersion = 12u;
+constexpr std::uint16_t kProtocolVersion = 13u;
 constexpr std::uint16_t kDefaultSessionTickRateHz = 60u;
 constexpr std::uint16_t kMinSessionTickRateHz = 20u;
 constexpr std::uint16_t kMaxSessionTickRateHz = 240u;
@@ -148,6 +149,8 @@ struct WelcomeMessage {
         std::uint16_t maxHumanPlayers{2u};
         ShotEvaluationMode shotEvaluationMode{ShotEvaluationMode::SeenPosition};
         SessionVisualizationMode visualizationMode{SessionVisualizationMode::Diagnostic};
+        std::string characterProfileName{"Default"};
+        character::CharacterAppearance characterAppearance{};
         bool botsFrozen{true};
         bool botsCanShoot{true};
         bool studyEventLoggingEnabled{false};

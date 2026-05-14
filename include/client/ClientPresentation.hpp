@@ -217,7 +217,9 @@ private:
     static std::vector<RemotePlayerRenderItem> buildRemotePlayers(
         const ClientViewState& viewState,
         const Arena3D& arena) {
-        return buildRemotePlayers(viewState.remotePlayers, arena);
+        return buildRemotePlayers(viewState.remotePlayers,
+                                  arena,
+                                  viewState.hostedSession.characterAppearance);
     }
 
     static std::vector<RemotePlayerRenderItem> buildRemotePlayerGhosts(
@@ -235,7 +237,9 @@ private:
         }
 
         std::vector<RemotePlayerRenderItem> ghosts =
-            buildRemotePlayers(viewState.remotePlayerGhosts, arena);
+            buildRemotePlayers(viewState.remotePlayerGhosts,
+                               arena,
+                               viewState.hostedSession.characterAppearance);
         ghosts.erase(std::remove_if(ghosts.begin(),
                                     ghosts.end(),
                                     [&solidPlayers](const RemotePlayerRenderItem& ghost) {
@@ -247,7 +251,8 @@ private:
 
     static std::vector<RemotePlayerRenderItem> buildRemotePlayers(
         const std::vector<RemotePlayerView>& playerViews,
-        const Arena3D& arena) {
+        const Arena3D& arena,
+        character::CharacterAppearance appearance = {}) {
         std::vector<RemotePlayerRenderItem> remotePlayers;
         remotePlayers.reserve(playerViews.size());
         for (const auto& playerView : playerViews) {
@@ -262,6 +267,7 @@ private:
             item.alive = playerView.alive;
             item.team = playerView.team;
             item.tint = teamTint(playerView.team);
+            item.appearance = character::normalizeAppearance(appearance);
             if (playerView.ghost) {
                 item.tint.a = static_cast<unsigned char>(item.tint.a * 0.35f);
             }

@@ -44,6 +44,8 @@ struct ServerConfig {
     std::uint32_t levelHash{0u};
     ShotEvaluationMode shotEvaluationMode{ShotEvaluationMode::SeenPosition};
     SessionVisualizationMode visualizationMode{SessionVisualizationMode::Diagnostic};
+    std::string characterProfileName{"Default"};
+    character::CharacterAppearance characterAppearance{};
     server::BotDirectorConfig botDirector{};
 };
 

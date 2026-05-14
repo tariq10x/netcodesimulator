@@ -119,6 +119,7 @@ Supported flags:
 - Adjust latency, packet loss, tick rate, snapshot rate, and transport behavior.
 - Compare prediction, reconciliation, interpolation, server authority, and shot evaluation rules.
 - Switch hosted sessions between Diagnostic visualization, which shows ghost tracks, and Reality visualization, which hides diagnostic ghosts from the player view.
+- Create character visual presets from the Character Editor menu, then select a hosted-session preset so every player renders with the same shoulder silhouette.
 - Record and replay sessions.
 - Export gameplay and study event logs.
 - Build levels with the level editor.
@@ -158,6 +159,7 @@ ctest --preset dev-sanitize
 
 - Local/LAN study use, not internet matchmaking.
 - Some recording, replay, and lag-compensation options are not exposed as live in-session toggles.
+- Character presets are visual-only in the current phase; authoritative hitboxes still use the baseline character body.
 
 ## Citation
 

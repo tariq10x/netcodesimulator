@@ -5,6 +5,7 @@
 #include "SettingsMenu.hpp"
 #include "LevelData.hpp"
 #include "TestDataRoot.hpp"
+#include "app/CharacterPresetStore.hpp"
 #include "net/SessionFlowController.hpp"
 
 #include <chrono>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -128,14 +130,16 @@ net::SessionLaunchConfig submitAfterTeamChoice(MultiplayerSessionMenu* menu,
 void testMainMenuExposesHostAndJoinFlow() {
     MainMenu menu;
 
-    expect(menu.optionCount() == 5, "main menu should expose the consolidated top-level mode set");
+    expect(menu.optionCount() == 6, "main menu should expose the consolidated top-level mode set");
     expect(std::string(menu.optionLabel(0)) == "Multiplayer",
            "first main menu option should expose the multiplayer submenu");
     expect(std::string(menu.optionLabel(1)) == "Lab Study",
            "second main menu option should expose the consolidated single-player study mode");
-    expect(std::string(menu.optionLabel(3)) == "Replay Studio",
+    expect(std::string(menu.optionLabel(3)) == "Character Editor",
+           "main menu should expose a character editor entry");
+    expect(std::string(menu.optionLabel(4)) == "Replay Studio",
            "main menu should expose a replay studio entry");
-    expect(std::string(menu.optionLabel(4)) == "Settings", "main menu should expose a settings entry");
+    expect(std::string(menu.optionLabel(5)) == "Settings", "main menu should expose a settings entry");
 
     const GameMode multiplayerMode = menu.triggerOptionForTest(0);
     expect(multiplayerMode == GameMode::MAIN_MENU,
@@ -176,12 +180,17 @@ void testMainMenuExposesHostAndJoinFlow() {
            "join option should mark the requested multiplayer mode as join");
 
     menu.resetToRootView();
-    const GameMode replayMode = menu.triggerOptionForTest(3);
+    const GameMode characterMode = menu.triggerOptionForTest(3);
+    expect(characterMode == GameMode::CHARACTER_EDITOR,
+           "character editor option should transition into the character editor screen");
+
+    menu.resetToRootView();
+    const GameMode replayMode = menu.triggerOptionForTest(4);
     expect(replayMode == GameMode::REPLAY_STUDIO,
            "replay studio option should transition into the saved replay browser");
 
     menu.resetToRootView();
-    const GameMode settingsMode = menu.triggerOptionForTest(4);
+    const GameMode settingsMode = menu.triggerOptionForTest(5);
     expect(settingsMode == GameMode::SETTINGS,
            "settings option should transition into the display settings screen");
 
@@ -305,7 +314,7 @@ void testMainMenuUsesSquareSocialButtons() {
     const float subtitleY = menu.rootSubtitleYForTest();
     const Rectangle firstOption = menu.optionRectForTest(0);
     const Rectangle secondOption = menu.optionRectForTest(1);
-    const Rectangle lastOption = menu.optionRectForTest(4);
+    const Rectangle lastOption = menu.optionRectForTest(5);
     const Rectangle youtubeButton =
         menu.externalButtonRectForTest(MainMenu::ExternalLinkTarget::YouTube);
     const Rectangle patreonButton =
@@ -511,6 +520,58 @@ void testHostSetupBuildsPublicJoinLaunchConfig() {
            "host preview should include the configured total bot count and balanced team split");
     expect(previewLine.find("42000") == std::string::npos,
            "host preview should not imply a hidden derived proxy port");
+}
+
+void testHostSetupCarriesSelectedCharacterProfile() {
+    app::CharacterPresetStore store;
+    std::vector<std::string> profileIds;
+    for (int index = 0; index < 7; ++index) {
+        character::CharacterProfile profile;
+        profile.id = "wide-shoulders-" + std::to_string(index);
+        profile.name = index == 0 ? "Wide Shoulders" : "Wide Shoulders " + std::to_string(index);
+        profile.appearance = character::CharacterAppearance{
+            1.70f + static_cast<float>(index) * 0.10f,
+            0.20f,
+            18.0f
+        };
+        profile.builtIn = false;
+        expect(store.save(profile), "host character-selection test profile should save");
+        profileIds.push_back(profile.id);
+    }
+
+    MultiplayerSessionMenu menu(net::SessionLaunchMode::Host);
+    menu.setSelectedLevelSlot(4);
+    menu.setPlayerName("host-player");
+    menu.setServerPortText("41000");
+    expect(menu.characterProfileCountForTest() >= 8u,
+           "host setup should load saved character profiles alongside the default");
+    menu.openCharacterDropdownForTest();
+    const Rectangle characterField = menu.fieldRectForTest("Character Preset");
+    const Rectangle dropdown = menu.characterDropdownRectForTest();
+    expect(menu.characterDropdownOpenForTest() &&
+               dropdown.y > characterField.y + characterField.height &&
+               dropdown.width == characterField.width,
+           "host character selection should open as a dropdown below the field");
+    expect(menu.visibleCharacterDropdownRowCountForTest() <= 5u &&
+               dropdown.height <= 5.0f * 56.0f,
+           "host character dropdown should stay compact instead of expanding the setup layout");
+
+    expect(menu.selectCharacterProfileForTest("wide-shoulders-0"),
+           "host setup should allow selecting a saved character profile");
+    expect(menu.characterProfileTextForTest() == "Wide Shoulders",
+           "host setup should display the selected character profile name");
+
+    const net::SessionLaunchConfig config = menu.buildLaunchConfig();
+    expect(config.characterProfileName == "Wide Shoulders" &&
+               std::fabs(config.characterAppearance.shoulderWidth - 1.70f) < 0.0001f &&
+               std::fabs(config.characterAppearance.shoulderHeight - 0.20f) < 0.0001f &&
+               std::fabs(config.characterAppearance.shoulderAngleDeg - 18.0f) < 0.0001f,
+           "host launch config should carry the selected authoritative character appearance");
+    expect(menu.previewLine().find("Character Wide Shoulders") != std::string::npos,
+           "host preview should include the selected character profile");
+    for (const std::string& profileId : profileIds) {
+        expect(store.remove(profileId), "host character-selection test profile should clean up");
+    }
 }
 
 void testHostSetupCanLaunchAsSpectator() {
@@ -1248,6 +1309,7 @@ void testMenuSurfacesRouteTypographyThroughSharedService() {
              "include/MainMenu.hpp",
              "include/LevelSelectMenu.hpp",
              "include/MultiplayerSessionMenu.hpp",
+             "include/CharacterEditorScreen.hpp",
              "include/SettingsMenu.hpp",
          }) {
         const std::string source = readTextFile(repoRoot / relativePath);
@@ -1291,6 +1353,7 @@ int main() {
         testHostSetupExposesVisibleUpperLeftBackAction();
         testHostSetupBackShortcutWinsEvenWithFocusedField();
         testHostSetupBuildsPublicJoinLaunchConfig();
+        testHostSetupCarriesSelectedCharacterProfile();
         testHostSetupCanLaunchAsSpectator();
         testHostSetupStartsWithAdvancedCollapsedAndCanExpand();
         testHostSetupCentersPrimaryStartAction();

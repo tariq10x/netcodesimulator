@@ -1,4 +1,5 @@
 #include "app/AppFlow.hpp"
+#include "CharacterEditorScreen.hpp"
 #include "DisplayManager.hpp"
 #include "LevelSelectMenu.hpp"
 #include "LevelEditor.hpp"
@@ -205,6 +206,7 @@ int main(int argc, char** argv) {
         std::unique_ptr<MultiplayerSessionMenu> multiplayerMenu;
         std::unique_ptr<LevelEditor> levelEditor;
         std::unique_ptr<ReplayStudio> replayStudio;
+        std::unique_ptr<CharacterEditorScreen> characterEditor;
         std::unique_ptr<net::SessionFlowController> sessionFlow;
         std::string menuStatusMessage;
         bool sessionCursorCaptured = false;
@@ -253,6 +255,9 @@ int main(int argc, char** argv) {
                 case GameMode::REPLAY_STUDIO:
                     replayStudio.reset();
                     return;
+                case GameMode::CHARACTER_EDITOR:
+                    characterEditor.reset();
+                    return;
                 default:
                     return;
             }
@@ -295,6 +300,7 @@ int main(int argc, char** argv) {
             multiplayerMenu.reset();
             levelEditor.reset();
             replayStudio.reset();
+            characterEditor.reset();
             hostGameTarget = false;
             labStudyTarget = false;
             editorTarget = false;
@@ -432,6 +438,11 @@ int main(int argc, char** argv) {
                             labStudyTarget = false;
                             editorTarget = false;
                             pushMenuMode(GameMode::REPLAY_STUDIO);
+                        } else if (nextMode == GameMode::CHARACTER_EDITOR) {
+                            hostGameTarget = false;
+                            labStudyTarget = false;
+                            editorTarget = false;
+                            pushMenuMode(GameMode::CHARACTER_EDITOR);
                         } else if (nextMode == GameMode::SETTINGS) {
                             pushMenuMode(GameMode::SETTINGS);
                         } else {
@@ -471,6 +482,8 @@ int main(int argc, char** argv) {
                             settingsMenu = std::make_unique<SettingsMenu>(userSettings);
                         } else if (currentMode == GameMode::REPLAY_STUDIO) {
                             replayStudio = std::make_unique<ReplayStudio>();
+                        } else if (currentMode == GameMode::CHARACTER_EDITOR) {
+                            characterEditor = std::make_unique<CharacterEditorScreen>();
                         } else if (currentMode == GameMode::QUIT) {
                             running = false;
                         }
@@ -652,6 +665,24 @@ int main(int argc, char** argv) {
                         }
                     } else {
                         renderFrame([&]() { replayStudio->render(); });
+                    }
+                    break;
+                }
+
+                case GameMode::CHARACTER_EDITOR: {
+                    if (!characterEditor) {
+                        characterEditor = std::make_unique<CharacterEditorScreen>();
+                    }
+
+                    const GameMode nextMode = characterEditor->update(dt, allowBackShortcut);
+                    if (nextMode != GameMode::CHARACTER_EDITOR) {
+                        if (nextMode == GameMode::MAIN_MENU) {
+                            popMenuMode();
+                        } else {
+                            currentMode = nextMode;
+                        }
+                    } else {
+                        renderFrame([&]() { characterEditor->render(); });
                     }
                     break;
                 }

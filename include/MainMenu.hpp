@@ -22,6 +22,7 @@ enum class GameMode {
     FREE_GAME,
     MULTIPLAYER_SESSION,
     REPLAY_STUDIO,
+    CHARACTER_EDITOR,
     SETTINGS,
     QUIT
 };
@@ -34,7 +35,8 @@ public:
         LabStudy = 2,
         LevelEditor = 3,
         ReplayStudio = 4,
-        Settings = 5
+        CharacterEditor = 5,
+        Settings = 6
     };
 
     enum class ExternalLinkTarget : std::uint8_t {
@@ -50,7 +52,7 @@ public:
     };
 
 private:
-    static constexpr int kRootOptionCount = 5;
+    static constexpr int kRootOptionCount = 6;
     static constexpr int kMultiplayerOptionCount = 2;
     static constexpr int kMaxOptionCount = kRootOptionCount;
     static constexpr const char* kGitHubMarkAssetPath = "assets/icons/GitHub_Invertocat_White.png";
@@ -94,6 +96,7 @@ private:
         "Multiplayer",
         "Lab Study",
         "Level Editor",
+        "Character Editor",
         "Replay Studio",
         "Settings"
     };
@@ -593,12 +596,17 @@ private:
                 return GameMode::LEVEL_SELECT;
             case 3:
                 requestedNavigation_ = NavigationSelection{
+                    AppShellSurface::CharacterEditor,
+                    net::SessionEntryPoint::None};
+                return GameMode::CHARACTER_EDITOR;
+            case 4:
+                requestedNavigation_ = NavigationSelection{
                     AppShellSurface::ReplayStudio,
                     net::SessionEntryPoint::Replay};
                 currentView_ = View::Root;
                 selectedOption = 0;
                 return GameMode::REPLAY_STUDIO;
-            case 4:
+            case 5:
                 requestedNavigation_ = NavigationSelection{
                     AppShellSurface::Settings,
                     net::SessionEntryPoint::None};
@@ -861,7 +869,14 @@ public:
             return activateOption(selectedOption);
         }
 
-        const int shortcutKeys[kMaxOptionCount] = {KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR, KEY_FIVE};
+        const int shortcutKeys[kMaxOptionCount] = {
+            KEY_ONE,
+            KEY_TWO,
+            KEY_THREE,
+            KEY_FOUR,
+            KEY_FIVE,
+            KEY_SIX
+        };
         for (int i = 0; i < optionCount; ++i) {
             if (IsKeyPressed(shortcutKeys[i])) {
                 selectedOption = i;

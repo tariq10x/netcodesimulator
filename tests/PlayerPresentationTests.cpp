@@ -95,6 +95,8 @@ client::ClientViewState makeRichClientViewState(sim::PaneSlot slot = sim::PaneSl
     sessionMetadata.sessionLabel = "Study Session";
     sessionMetadata.shotEvaluationMode = net::ShotEvaluationMode::LivePosition;
     sessionMetadata.visualizationMode = visualizationMode;
+    sessionMetadata.characterProfileName = "Wide Shoulders";
+    sessionMetadata.characterAppearance = character::CharacterAppearance{1.62f, 0.24f, 14.0f};
     sessionMetadata.publicJoinPort = 41000u;
     sessionMetadata.botsFrozen = botsFrozen;
     sessionMetadata.botsCanShoot = botsCanShoot;
@@ -644,6 +646,11 @@ void testPresentationStateSubsystemBuildsTypedScoreboardAndDiagnosticsState() {
     expect(viewState.hostedSession.visualizationModeLabel == "Diagnostic" &&
                viewState.hostedSession.ghostTracksVisible,
            "typed hosted-session view state should expose diagnostic ghost visibility");
+    expect(viewState.hostedSession.characterProfileName == "Wide Shoulders" &&
+               nearlyEqual(viewState.hostedSession.characterAppearance.shoulderWidth, 1.62f) &&
+               nearlyEqual(viewState.hostedSession.characterAppearance.shoulderHeight, 0.24f) &&
+               nearlyEqual(viewState.hostedSession.characterAppearance.shoulderAngleDeg, 14.0f),
+           "typed hosted-session view state should preserve authoritative character appearance");
     expect(viewState.remotePlayers.size() == 1u &&
                viewState.remotePlayers[0].team == sim::TeamId::Defender &&
                nearlyEqual(viewState.remotePlayers[0].eyePosition.x, 10.0f) &&
@@ -775,6 +782,10 @@ void testClientPresentationBuildsRenderFrameFromClientViewState() {
     expect(nearlyEqual(frame.remotePlayers[0].rootPosition.y, expectedGround) &&
                frame.remotePlayers[0].tint.b > frame.remotePlayers[0].tint.r,
            "render frame should anchor remote players to arena surfaces and preserve team tinting");
+    expect(nearlyEqual(frame.remotePlayers[0].appearance.shoulderWidth, 1.62f) &&
+               nearlyEqual(frame.remotePlayers[0].appearance.shoulderHeight, 0.24f) &&
+               nearlyEqual(frame.remotePlayerGhosts[0].appearance.shoulderAngleDeg, 14.0f),
+           "render frame should carry the authoritative character appearance into solid and ghost player drawables");
     expect(frame.remotePlayerGhosts[0].ghost &&
                frame.remotePlayerGhosts[0].rootPosition.x > frame.remotePlayers[0].rootPosition.x,
            "render frame should preserve separate ghost-control drawables for the clean snapshot stream");

@@ -492,6 +492,9 @@ private:
             : (!metadata.hostPlayerName.empty() ? metadata.hostPlayerName : "Hosted Session");
         view.shotRuleLabel = std::string(net::toString(metadata.shotEvaluationMode));
         view.visualizationModeLabel = std::string(net::toString(metadata.visualizationMode));
+        view.characterProfileName =
+            metadata.characterProfileName.empty() ? "Default" : metadata.characterProfileName;
+        view.characterAppearance = character::normalizeAppearance(metadata.characterAppearance);
         view.botDirectorLabel = metadata.botsFrozen
             ? "Frozen"
             : (metadata.botsCanShoot ? "Active" : "Peace");

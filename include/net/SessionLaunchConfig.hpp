@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 
+#include "character/CharacterProfile.hpp"
 #include "net/Protocol.hpp"
 
 namespace net {
@@ -72,6 +73,8 @@ struct SessionLaunchConfig {
     sim::TeamId preferredTeam{sim::TeamId::None};
     ShotEvaluationMode shotEvaluationMode{ShotEvaluationMode::SeenPosition};
     SessionVisualizationMode visualizationMode{SessionVisualizationMode::Diagnostic};
+    std::string characterProfileName{"Default"};
+    character::CharacterAppearance characterAppearance{};
     std::uint16_t tickRateHz{kDefaultSessionTickRateHz};
     std::uint16_t snapshotRateHz{kDefaultHostedSnapshotRateHz};
     SessionStudyOptions studyOptions{};
@@ -182,6 +185,11 @@ inline void normalizeSessionLaunchConfig(SessionLaunchConfig* config) {
     }
     if (config->levelHash == 0u && config->levelSlot >= 0) {
         config->levelHash = makeLevelIdentityHash(config->levelSlot);
+    }
+    config->characterAppearance =
+        character::normalizeAppearance(config->characterAppearance);
+    if (config->characterProfileName.empty()) {
+        config->characterProfileName = "Default";
     }
 
     switch (config->entryPoint) {
@@ -448,6 +456,8 @@ inline HostedSessionMetadata makeHostedSessionMetadata(const SessionLaunchConfig
     metadata.maxHumanPlayers = normalized.maxHumanPlayers;
     metadata.shotEvaluationMode = normalized.shotEvaluationMode;
     metadata.visualizationMode = normalized.visualizationMode;
+    metadata.characterProfileName = normalized.characterProfileName;
+    metadata.characterAppearance = normalized.characterAppearance;
     metadata.botsFrozen = true;
     metadata.botsCanShoot = true;
     metadata.studyEventLoggingEnabled = normalized.studyOptions.enableEventLogging;

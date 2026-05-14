@@ -9,6 +9,7 @@ targets=(
   SessionDiscoveryTests
   SessionLaunchFlowTests
   PlayerPresentationTests
+  CharacterProfileTests
   ProtocolTests
   ServerRuntimeTests
   ClientRuntimeJoinTests
@@ -20,4 +21,4 @@ targets=(
 cmake --build "${build_dir}" --target "${targets[@]}" --parallel 4
 
 ctest --test-dir "${build_dir}" --output-on-failure -R \
-  "LevelEditorTests|MultiplayerSessionMenuTests|SessionDiscoveryTests|SessionLaunchFlowTests|PlayerPresentationTests|ProtocolTests|ServerRuntimeTests|ClientRuntimeJoinTests|CheckpointStoreTests|CombatParityTests|ArchitectureCharacterizationTests"
+  "LevelEditorTests|MultiplayerSessionMenuTests|SessionDiscoveryTests|SessionLaunchFlowTests|PlayerPresentationTests|CharacterProfileTests|ProtocolTests|ServerRuntimeTests|ClientRuntimeJoinTests|CheckpointStoreTests|CombatParityTests|ArchitectureCharacterizationTests"

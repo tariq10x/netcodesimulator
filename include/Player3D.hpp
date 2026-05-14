@@ -4,6 +4,7 @@
 #include "Config3D.hpp"
 #include "Math3DUtil.hpp"
 #include "Model3DWrapper.hpp"
+#include "character/CharacterProfile.hpp"
 #include "client/RenderFrame.hpp"
 #include "sim/SimulationTypes.hpp"
 #include <memory>
@@ -223,15 +224,29 @@ public:
         if (model && model->isLoaded()) {
             model->drawWiresEx(rootPos, {0, 1, 0}, yawRadians * RAD2DEG, {0.001f, 0.001f, 0.001f}, tint);
         } else {
-            DrawCylinder(rootPos, Config::ENEMY_BODY_RADIUS,
-                         Config::ENEMY_BODY_RADIUS, Config::ENEMY_BODY_HEIGHT, 16, tint);
-
-            Vector3 headPos = headCenterFromRoot(rootPos);
-            DrawSphere(headPos, Config::ENEMY_HEAD_RADIUS, tint);
+            renderProceduralCharacter(rootPos,
+                                      yawRadians,
+                                      character::defaultAppearance(),
+                                      tint,
+                                      false);
         }
     }
 
-    void renderGhostAtRoot(Vector3 rootPos, float /*yawRadians*/, Color tint) const {
+    void renderAtRoot(Vector3 rootPos,
+                      float yawRadians,
+                      Color tint,
+                      character::CharacterAppearance appearance) const {
+        if (model && model->isLoaded()) {
+            model->drawWiresEx(rootPos, {0, 1, 0}, yawRadians * RAD2DEG, {0.001f, 0.001f, 0.001f}, tint);
+            return;
+        }
+        renderProceduralCharacter(rootPos, yawRadians, appearance, tint, false);
+    }
+
+    void renderGhostAtRoot(Vector3 rootPos,
+                           float yawRadians,
+                           Color tint,
+                           character::CharacterAppearance appearance = {}) const {
         Vector3 drawRoot = rootPos;
 
         Color fillTint = tint;
@@ -251,31 +266,18 @@ public:
         Vector3 headPos = headCenterFromRoot(rootPos);
         headPos.y -= kGhostHeadLowerOffset;
 
-        // Keep the ghost head centered on the solid head anchor; shrinking from
-        // the shared center makes a zero-offset ghost disappear inside the actor.
-        DrawCylinder(drawRoot,
-                     bodyRadius,
-                     bodyRadius,
-                     bodyHeight,
-                     16,
-                     fillTint);
-        DrawCylinderWires(drawRoot,
-                          bodyRadius,
-                          bodyRadius,
-                          bodyHeight,
-                          16,
-                          outlineTint);
-        DrawSphere(headPos, headRadius, fillTint);
+        renderProceduralCharacter(drawRoot, yawRadians, appearance, fillTint, true);
+        DrawCylinderWires(drawRoot, bodyRadius, bodyRadius, bodyHeight, 16, outlineTint);
         DrawSphereWires(headPos, headRadius, 10, 10, outlineTint);
     }
 
     void render(const client::RemotePlayerRenderItem& item) const {
         Color tint = item.alive ? item.tint : Color{120, 120, 120, 180};
         if (item.ghost) {
-            renderGhostAtRoot(item.rootPosition, item.yawRadians, tint);
+            renderGhostAtRoot(item.rootPosition, item.yawRadians, tint, item.appearance);
             return;
         }
-        renderAtRoot(item.rootPosition, item.yawRadians, tint);
+        renderAtRoot(item.rootPosition, item.yawRadians, tint, item.appearance);
     }
 
     void renderGhost() const {
@@ -371,6 +373,59 @@ public:
     }
 
 private:
+    static Vector3 localToWorld(Vector3 rootPosition, float yawRadians, const sim::Vec3& local) {
+        const float cosYaw = std::cos(yawRadians);
+        const float sinYaw = std::sin(yawRadians);
+        return Vector3{
+            rootPosition.x + local.x * cosYaw + local.z * sinYaw,
+            rootPosition.y + local.y,
+            rootPosition.z + local.x * sinYaw - local.z * cosYaw
+        };
+    }
+
+    static void renderShoulderPrimitive(Vector3 rootPosition,
+                                        float yawRadians,
+                                        const character::CharacterPrimitive& primitive,
+                                        Color tint,
+                                        bool wireframe) {
+        if (primitive.radius <= 0.0f) {
+            return;
+        }
+        const Vector3 start = localToWorld(rootPosition, yawRadians, primitive.start);
+        const Vector3 end = localToWorld(rootPosition, yawRadians, primitive.end);
+        DrawCylinderEx(start, end, primitive.radius, primitive.radius, 12, tint);
+        if (wireframe) {
+            Color outline = tint;
+            outline.a = static_cast<unsigned char>(std::min<int>(255, outline.a + 70));
+            DrawCylinderWiresEx(start, end, primitive.radius, primitive.radius, 12, outline);
+        }
+    }
+
+    static void renderProceduralCharacter(Vector3 rootPosition,
+                                          float yawRadians,
+                                          character::CharacterAppearance appearance,
+                                          Color tint,
+                                          bool wireframe) {
+        const character::CharacterGeometry geometry =
+            character::buildCharacterGeometry(appearance);
+        DrawCylinder(rootPosition,
+                     geometry.torso.radius,
+                     geometry.torso.radius,
+                     Config::ENEMY_BODY_HEIGHT,
+                     16,
+                     tint);
+        renderShoulderPrimitive(rootPosition, yawRadians, geometry.leftShoulder, tint, wireframe);
+        renderShoulderPrimitive(rootPosition, yawRadians, geometry.rightShoulder, tint, wireframe);
+
+        const Vector3 headPos = localToWorld(rootPosition, yawRadians, geometry.head.start);
+        DrawSphere(headPos, geometry.head.radius, tint);
+        if (wireframe) {
+            Color outline = tint;
+            outline.a = static_cast<unsigned char>(std::min<int>(255, outline.a + 70));
+            DrawSphereWires(headPos, geometry.head.radius, 10, 10, outline);
+        }
+    }
+
     static sim::Vec3 toSim(Vector3 value) {
         return sim::Vec3{value.x, value.y, value.z};
     }

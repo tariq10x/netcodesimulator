@@ -85,6 +85,9 @@ net::SessionSummary makeSessionSummaryContract(
     summary.sessionMetadata.maxHumanPlayers = 2u;
     summary.sessionMetadata.shotEvaluationMode = shotEvaluationMode;
     summary.sessionMetadata.visualizationMode = visualizationMode;
+    summary.sessionMetadata.characterProfileName = "Wide Shoulders";
+    summary.sessionMetadata.characterAppearance =
+        character::CharacterAppearance{1.42f, 0.22f, 12.0f};
     summary.sessionMetadata.botsFrozen = true;
     summary.sessionMetadata.botsCanShoot = false;
     summary.sessionMetadata.studyEventLoggingEnabled = true;
@@ -176,6 +179,8 @@ net::Packet makeWelcomePacket(
     config.sessionLabel = "Player LAN Match";
     config.shotEvaluationMode = shotEvaluationMode;
     config.visualizationMode = visualizationMode;
+    config.characterProfileName = "Wide Shoulders";
+    config.characterAppearance = character::CharacterAppearance{1.42f, 0.22f, 12.0f};
     config.studyOptions.enableEventLogging = true;
     config.studyEventRunId = "welcome-run";
 
@@ -459,6 +464,11 @@ void testWorldSnapshotRoundTrip() {
            "snapshot packet should preserve hosted session metadata");
     expect(decodedSnapshot.sessionMetadata.shotEvaluationMode == net::ShotEvaluationMode::SeenPosition,
            "snapshot packet should preserve the authoritative shot-evaluation mode");
+    expect(decodedSnapshot.sessionMetadata.characterProfileName == "Wide Shoulders" &&
+               decodedSnapshot.sessionMetadata.characterAppearance.shoulderWidth == 1.42f &&
+               decodedSnapshot.sessionMetadata.characterAppearance.shoulderHeight == 0.22f &&
+               decodedSnapshot.sessionMetadata.characterAppearance.shoulderAngleDeg == 12.0f,
+           "snapshot packet should preserve authoritative character appearance metadata");
     expect(decodedSnapshot.sessionMetadata.botsFrozen,
            "snapshot packet should preserve the hosted bot-director freeze state");
     expect(!decodedSnapshot.sessionMetadata.botsCanShoot,
@@ -529,6 +539,11 @@ void testWelcomeRoundTripPreservesLevelIdentity() {
            "welcome packet should preserve the fixed hosted human-player cap");
     expect(welcome.sessionMetadata.shotEvaluationMode == net::ShotEvaluationMode::SeenPosition,
            "welcome packet should preserve the authoritative shot-evaluation mode");
+    expect(welcome.sessionMetadata.characterProfileName == "Wide Shoulders" &&
+               welcome.sessionMetadata.characterAppearance.shoulderWidth == 1.42f &&
+               welcome.sessionMetadata.characterAppearance.shoulderHeight == 0.22f &&
+               welcome.sessionMetadata.characterAppearance.shoulderAngleDeg == 12.0f,
+           "welcome packet should preserve authoritative character appearance metadata");
     expect(welcome.sessionMetadata.botsFrozen,
            "welcome packet should preserve the hosted bot-director freeze state");
     expect(welcome.sessionMetadata.botsCanShoot,
@@ -821,6 +836,8 @@ void testInvalidShotEvaluationMetadataIsRejectedDeterministically() {
     const auto& welcome = std::get<net::WelcomeMessage>(packet.payload);
     const std::size_t trailingMetadataBytes =
         sizeof(std::uint8_t) +  // visualizationMode
+        sizeof(std::uint16_t) + welcome.sessionMetadata.characterProfileName.size() +
+        sizeof(float) * 3u +  // character appearance
         sizeof(std::uint8_t) +  // botsFrozen
         sizeof(std::uint8_t) +  // botsCanShoot
         sizeof(std::uint8_t) +  // studyEventLoggingEnabled
@@ -838,6 +855,8 @@ void testInvalidVisualizationMetadataIsRejectedDeterministically() {
     net::ByteBuffer bytes = net::serializePacket(packet);
     const auto& welcome = std::get<net::WelcomeMessage>(packet.payload);
     const std::size_t trailingMetadataBytes =
+        sizeof(std::uint16_t) + welcome.sessionMetadata.characterProfileName.size() +
+        sizeof(float) * 3u +  // character appearance
         sizeof(std::uint8_t) +  // botsFrozen
         sizeof(std::uint8_t) +  // botsCanShoot
         sizeof(std::uint8_t) +  // studyEventLoggingEnabled

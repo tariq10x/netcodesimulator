@@ -51,6 +51,7 @@ struct RemotePlayerRenderItem {
     sim::TeamId team{sim::TeamId::None};
     Color tint{180, 180, 180, 255};
     bool ghost{false};
+    character::CharacterAppearance appearance{};
 };
 
 struct RemoteEnemyRenderItem {

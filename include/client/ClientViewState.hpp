@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "character/CharacterProfile.hpp"
 #include "sim/SimulationTypes.hpp"
 
 namespace client {
@@ -28,6 +29,8 @@ struct HostedSessionView {
     std::string shotRuleLabel{};
     std::string botDirectorLabel{};
     std::string visualizationModeLabel{};
+    std::string characterProfileName{"Default"};
+    character::CharacterAppearance characterAppearance{};
     std::uint16_t publicJoinPort{0u};
     bool botsFrozen{true};
     bool botsCanShoot{true};

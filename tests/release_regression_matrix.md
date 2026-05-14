@@ -11,11 +11,13 @@ Coverage ownership:
 - `LevelEditorTests`
   Covers editor placement, toolbar affordances, save visibility, and drag/move behavior.
 - `MultiplayerSessionMenuTests`, `SessionDiscoveryTests`, `SessionLaunchFlowTests`
-  Cover JOIN discovery stability, back-navigation/menu flow, external menu actions, and host/join/lab-study launch seams.
+  Cover JOIN discovery stability, back-navigation/menu flow, external menu actions, hosted character selection, and host/join/lab-study launch seams.
 - `PlayerPresentationTests`, `ClientRuntimeJoinTests`, `CombatParityTests`
   Cover compact score presentation, kill feed behavior, study presentation toggles, and HUD/runtime parity.
 - `ProtocolTests`, `ServerRuntimeTests`, `ClientRuntimeJoinTests`
   Cover session-action protocol wiring, frozen-bot study actions, and staged/live tick-rate behavior.
+- `CharacterProfileTests`
+  Cover visual character-profile normalization, editable shoulder geometry, and preset persistence.
 - `CheckpointStoreTests`, `ClientRuntimeJoinTests`
   Cover recording-checkpoint defaults and persisted transition timing.
 - `ArchitectureCharacterizationTests`

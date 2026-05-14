@@ -11,9 +11,11 @@
 #include <utility>
 #include <vector>
 
+#include "CharacterThumbnail.hpp"
 #include "DisplayManager.hpp"
 #include "MainMenu.hpp"
 #include "TypographyService.hpp"
+#include "app/CharacterPresetStore.hpp"
 #include "net/SessionDiscovery.hpp"
 #include "net/SessionLaunchConfig.hpp"
 #include "net/UdpSocket.hpp"
@@ -47,7 +49,8 @@ private:
         SnapshotRate = 6,
         MaxHumanPlayers = 7,
         ShotEvaluationMode = 8,
-        TotalBots = 9
+        TotalBots = 9,
+        CharacterProfile = 10
     };
 
     struct TextField {
@@ -81,6 +84,7 @@ private:
     std::string hostAddressText_{"127.0.0.1"};
     std::string serverPortText_{std::to_string(net::kDefaultServerPort)};
     std::string playerNameText_{"player"};
+    std::string characterProfileText_{"Default"};
     std::string preferredTeamText_{teamChoiceText(sim::TeamId::Defender)};
     std::string sessionLabelText_{};
     std::string tickRateText_{std::to_string(net::kDefaultSessionTickRateHz) + " Hz"};
@@ -113,7 +117,12 @@ private:
     std::uint16_t tickRateHz_{net::kDefaultSessionTickRateHz};
     std::uint16_t snapshotRateHz_{net::kDefaultHostedSnapshotRateHz};
     net::ShotEvaluationMode shotEvaluationMode_{net::ShotEvaluationMode::SeenPosition};
-    std::array<TextField, 9> fields_{};
+    std::array<TextField, 10> fields_{};
+    app::CharacterPresetStore characterPresetStore_{};
+    std::vector<character::CharacterProfile> characterProfiles_{};
+    std::size_t selectedCharacterProfileIndex_{0u};
+    std::size_t characterDropdownFirstIndex_{0u};
+    bool characterDropdownOpen_{false};
     net::UdpSocket discoverySocket_{};
     net::SessionBrowserCache discoveryCache_{};
 
@@ -262,39 +271,46 @@ private:
                                 startY + seedPitch * 3.0f,
                                 kSetupFieldWidth,
                                 kSetupFieldHeight},
+                               "Character Preset",
+                               &characterProfileText_,
+                               Field::CharacterProfile};
+        fields_[4] = TextField{{kSetupFieldPanelX,
+                                startY + seedPitch * 4.0f,
+                                kSetupFieldWidth,
+                                kSetupFieldHeight},
                                "Session Label",
                                &sessionLabelText_,
                                Field::SessionLabel};
-        fields_[4] = TextField{{kSetupFieldPanelX,
-                                startY + seedPitch * 4.0f,
+        fields_[5] = TextField{{kSetupFieldPanelX,
+                                startY + seedPitch * 5.0f,
                                 kSetupFieldWidth,
                                 kSetupFieldHeight},
                                "Tick Rate",
                                &tickRateText_,
                                Field::TickRate};
-        fields_[5] = TextField{{kSetupFieldPanelX,
-                                startY + seedPitch * 5.0f,
+        fields_[6] = TextField{{kSetupFieldPanelX,
+                                startY + seedPitch * 6.0f,
                                 kSetupFieldWidth,
                                 kSetupFieldHeight},
                                "Snapshot Rate",
                                &snapshotRateText_,
                                Field::SnapshotRate};
-        fields_[6] = TextField{{kSetupFieldPanelX,
-                                startY + seedPitch * 6.0f,
+        fields_[7] = TextField{{kSetupFieldPanelX,
+                                startY + seedPitch * 7.0f,
                                 kSetupFieldWidth,
                                 kSetupFieldHeight},
                                "Human Player Cap",
                                &maxHumanPlayersText_,
                                Field::MaxHumanPlayers};
-        fields_[7] = TextField{{kSetupFieldPanelX,
-                                startY + seedPitch * 7.0f,
+        fields_[8] = TextField{{kSetupFieldPanelX,
+                                startY + seedPitch * 8.0f,
                                 kSetupFieldWidth,
                                 kSetupFieldHeight},
                                "Shot Rule",
                                &shotEvaluationModeText_,
                                Field::ShotEvaluationMode};
-        fields_[8] = TextField{{kSetupFieldPanelX,
-                                startY + seedPitch * 8.0f,
+        fields_[9] = TextField{{kSetupFieldPanelX,
+                                startY + seedPitch * 9.0f,
                                 kSetupFieldWidth,
                                 kSetupFieldHeight},
                                "Bots",
@@ -338,6 +354,137 @@ private:
         shotEvaluationModeText_ = net::toString(shotEvaluationMode_);
     }
 
+    const character::CharacterProfile& selectedCharacterProfile() const {
+        static const character::CharacterProfile fallback = character::defaultProfile();
+        if (characterProfiles_.empty()) {
+            return fallback;
+        }
+        const std::size_t index =
+            std::min(selectedCharacterProfileIndex_, characterProfiles_.size() - 1u);
+        return characterProfiles_[index];
+    }
+
+    void syncCharacterProfileText() {
+        characterProfileText_ = selectedCharacterProfile().name;
+    }
+
+    static constexpr std::size_t maxVisibleCharacterDropdownRows() {
+        return 5u;
+    }
+
+    static float characterDropdownRowHeight() {
+        return 56.0f;
+    }
+
+    std::size_t visibleCharacterDropdownRowCount() const {
+        return std::min(maxVisibleCharacterDropdownRows(), characterProfiles_.size());
+    }
+
+    void clampCharacterDropdownScroll() {
+        const std::size_t visibleRows = visibleCharacterDropdownRowCount();
+        if (visibleRows == 0u || characterProfiles_.size() <= visibleRows) {
+            characterDropdownFirstIndex_ = 0u;
+            return;
+        }
+        const std::size_t maxFirst = characterProfiles_.size() - visibleRows;
+        characterDropdownFirstIndex_ = std::min(characterDropdownFirstIndex_, maxFirst);
+    }
+
+    void ensureSelectedCharacterProfileVisible() {
+        const std::size_t visibleRows = visibleCharacterDropdownRowCount();
+        if (visibleRows == 0u || characterProfiles_.empty()) {
+            characterDropdownFirstIndex_ = 0u;
+            return;
+        }
+        if (selectedCharacterProfileIndex_ < characterDropdownFirstIndex_) {
+            characterDropdownFirstIndex_ = selectedCharacterProfileIndex_;
+        } else if (selectedCharacterProfileIndex_ >= characterDropdownFirstIndex_ + visibleRows) {
+            characterDropdownFirstIndex_ = selectedCharacterProfileIndex_ - visibleRows + 1u;
+        }
+        clampCharacterDropdownScroll();
+    }
+
+    Rectangle characterDropdownRect() const {
+        const Rectangle fieldRect = setupFieldRect(Field::CharacterProfile);
+        const std::size_t visibleRows = visibleCharacterDropdownRowCount();
+        if (visibleRows == 0u || fieldRect.width <= 0.0f) {
+            return Rectangle{};
+        }
+        return Rectangle{
+            fieldRect.x,
+            fieldRect.y + fieldRect.height + 8.0f,
+            fieldRect.width,
+            characterDropdownRowHeight() * static_cast<float>(visibleRows)
+        };
+    }
+
+    Rectangle characterDropdownRowRect(std::size_t visibleIndex) const {
+        const Rectangle dropdown = characterDropdownRect();
+        if (dropdown.width <= 0.0f || visibleIndex >= visibleCharacterDropdownRowCount()) {
+            return Rectangle{};
+        }
+        return Rectangle{
+            dropdown.x,
+            dropdown.y + characterDropdownRowHeight() * static_cast<float>(visibleIndex),
+            dropdown.width,
+            characterDropdownRowHeight()
+        };
+    }
+
+    bool selectCharacterProfileIndex(std::size_t index) {
+        if (index >= characterProfiles_.size()) {
+            return false;
+        }
+        selectedCharacterProfileIndex_ = index;
+        syncCharacterProfileText();
+        ensureSelectedCharacterProfileVisible();
+        return true;
+    }
+
+    void closeCharacterDropdown() {
+        characterDropdownOpen_ = false;
+    }
+
+    void openCharacterDropdown() {
+        if (mode_ != net::SessionLaunchMode::Host || step_ != Step::Setup) {
+            return;
+        }
+        if (characterProfiles_.empty()) {
+            refreshCharacterProfiles();
+        }
+        ensureSelectedCharacterProfileVisible();
+        characterDropdownOpen_ = !characterProfiles_.empty();
+    }
+
+    void toggleCharacterDropdown() {
+        if (characterDropdownOpen_) {
+            closeCharacterDropdown();
+            return;
+        }
+        openCharacterDropdown();
+    }
+
+    void refreshCharacterProfiles() {
+        const std::string previousId = characterProfiles_.empty()
+            ? std::string{"default"}
+            : selectedCharacterProfile().id;
+        characterProfiles_ = characterPresetStore_.loadProfiles();
+        if (characterProfiles_.empty()) {
+            characterProfiles_.push_back(character::defaultProfile());
+        }
+
+        selectedCharacterProfileIndex_ = 0u;
+        for (std::size_t index = 0; index < characterProfiles_.size(); ++index) {
+            if (characterProfiles_[index].id == previousId) {
+                selectedCharacterProfileIndex_ = index;
+                break;
+            }
+        }
+        clampCharacterDropdownScroll();
+        ensureSelectedCharacterProfileVisible();
+        syncCharacterProfileText();
+    }
+
     void syncTickRateText() {
         tickRateText_ = std::to_string(tickRateHz_) + " Hz";
     }
@@ -362,7 +509,8 @@ private:
     static bool isChoiceField(Field field) {
         return field == Field::TickRate ||
                field == Field::SnapshotRate ||
-               field == Field::ShotEvaluationMode;
+               field == Field::ShotEvaluationMode ||
+               field == Field::CharacterProfile;
     }
 
     Field defaultActiveField() const {
@@ -389,6 +537,7 @@ private:
     void setStepInternal(Step step) {
         step_ = step;
         activeField_ = defaultActiveField();
+        closeCharacterDropdown();
         clickReady_ = false;
         validationError_.clear();
         statusMessage_.clear();
@@ -396,6 +545,7 @@ private:
 
     void setJoinSubviewInternal(JoinSubview subview) {
         joinSubview_ = subview;
+        closeCharacterDropdown();
         if (mode_ == net::SessionLaunchMode::Join &&
             joinSubview_ == JoinSubview::Browser) {
             discoveryAutoScanPending_ = true;
@@ -407,6 +557,7 @@ private:
 
     void setHostAdvancedExpandedInternal(bool expanded) {
         hostAdvancedExpanded_ = expanded;
+        closeCharacterDropdown();
         activeField_ = defaultActiveField();
         validationError_.clear();
         statusMessage_.clear();
@@ -583,6 +734,21 @@ private:
         setSnapshotRateChoice(supportedChoices[static_cast<std::size_t>(wrappedIndex)]);
     }
 
+    void cycleCharacterProfileChoice(int delta) {
+        if (characterProfiles_.empty()) {
+            refreshCharacterProfiles();
+        }
+        if (characterProfiles_.empty()) {
+            return;
+        }
+
+        const int count = static_cast<int>(characterProfiles_.size());
+        const int currentIndex = static_cast<int>(selectedCharacterProfileIndex_);
+        const int wrappedIndex = (currentIndex + delta) % count;
+        selectCharacterProfileIndex(
+            static_cast<std::size_t>(wrappedIndex < 0 ? wrappedIndex + count : wrappedIndex));
+    }
+
     void cycleChoiceField(Field field, int delta) {
         switch (field) {
             case Field::TickRate:
@@ -593,6 +759,9 @@ private:
                 return;
             case Field::ShotEvaluationMode:
                 toggleShotEvaluationMode();
+                return;
+            case Field::CharacterProfile:
+                cycleCharacterProfileChoice(delta);
                 return;
             default:
                 return;
@@ -833,6 +1002,7 @@ private:
             switch (field) {
                 case Field::ServerPort:
                 case Field::PlayerName:
+                case Field::CharacterProfile:
                 case Field::TotalBots:
                     return true;
                 case Field::SessionLabel:
@@ -896,6 +1066,9 @@ private:
             config.snapshotRateHz = snapshotRateHz_;
             config.maxHumanPlayers = maxHumanPlayers;
             config.shotEvaluationMode = shotEvaluationMode_;
+            const character::CharacterProfile& profile = selectedCharacterProfile();
+            config.characterProfileName = profile.name;
+            config.characterAppearance = profile.appearance;
             config.discoveryPort = discoveryPort_;
             net::normalizeSessionLaunchConfig(&config);
             return config;
@@ -941,23 +1114,26 @@ private:
     }
 
     void cycleField() {
+        closeCharacterDropdown();
         if (mode_ == net::SessionLaunchMode::Host) {
             if (hostAdvancedExpanded_) {
                 switch (activeField_) {
                     case Field::ServerPort: activeField_ = Field::PlayerName; break;
-                    case Field::PlayerName: activeField_ = Field::TotalBots; break;
-                    case Field::TotalBots: activeField_ = Field::SessionLabel; break;
+                    case Field::PlayerName: activeField_ = Field::CharacterProfile; break;
+                    case Field::CharacterProfile: activeField_ = Field::SessionLabel; break;
                     case Field::SessionLabel: activeField_ = Field::TickRate; break;
                     case Field::TickRate: activeField_ = Field::SnapshotRate; break;
                     case Field::SnapshotRate: activeField_ = Field::MaxHumanPlayers; break;
                     case Field::MaxHumanPlayers: activeField_ = Field::ShotEvaluationMode; break;
+                    case Field::ShotEvaluationMode: activeField_ = Field::TotalBots; break;
                     default: activeField_ = Field::ServerPort; break;
                 }
                 return;
             }
             switch (activeField_) {
                 case Field::ServerPort: activeField_ = Field::PlayerName; break;
-                case Field::PlayerName: activeField_ = Field::TotalBots; break;
+                case Field::PlayerName: activeField_ = Field::CharacterProfile; break;
+                case Field::CharacterProfile: activeField_ = Field::TotalBots; break;
                 default: activeField_ = Field::ServerPort; break;
             }
             return;
@@ -1039,6 +1215,7 @@ private:
         }
         if (IsKeyPressed(KEY_ESCAPE)) {
             activeField_ = Field::None;
+            closeCharacterDropdown();
             validationError_.clear();
             statusMessage_.clear();
             return true;
@@ -1051,6 +1228,7 @@ private:
         statusMessage_.clear();
         busy_ = false;
         activeField_ = Field::None;
+        closeCharacterDropdown();
         if (step_ == Step::TeamChoice) {
             setStepInternal(Step::Setup);
             return Result{};
@@ -1089,12 +1267,59 @@ private:
         syncPreferredTeamText();
     }
 
+    void scrollCharacterDropdown(float wheelMove) {
+        if (!characterDropdownOpen_ || characterProfiles_.empty() || wheelMove == 0.0f) {
+            return;
+        }
+        const std::size_t visibleRows = visibleCharacterDropdownRowCount();
+        if (characterProfiles_.size() <= visibleRows) {
+            return;
+        }
+
+        const int direction = wheelMove > 0.0f ? -1 : 1;
+        const int current = static_cast<int>(characterDropdownFirstIndex_);
+        const int maxFirst = static_cast<int>(characterProfiles_.size() - visibleRows);
+        characterDropdownFirstIndex_ =
+            static_cast<std::size_t>(std::clamp(current + direction, 0, maxFirst));
+    }
+
+    bool handleCharacterDropdownClick(Vector2 mousePos) {
+        if (!characterDropdownOpen_) {
+            return false;
+        }
+
+        const Rectangle dropdown = characterDropdownRect();
+        const std::size_t visibleRows = visibleCharacterDropdownRowCount();
+        for (std::size_t visibleIndex = 0; visibleIndex < visibleRows; ++visibleIndex) {
+            const Rectangle row = characterDropdownRowRect(visibleIndex);
+            if (!CheckCollisionPointRec(mousePos, row)) {
+                continue;
+            }
+
+            const std::size_t profileIndex = characterDropdownFirstIndex_ + visibleIndex;
+            if (selectCharacterProfileIndex(profileIndex)) {
+                closeCharacterDropdown();
+                activeField_ = Field::CharacterProfile;
+                validationError_.clear();
+                statusMessage_.clear();
+                return true;
+            }
+        }
+
+        if (!CheckCollisionPointRec(mousePos, dropdown) &&
+            !CheckCollisionPointRec(mousePos, setupFieldRect(Field::CharacterProfile))) {
+            closeCharacterDropdown();
+        }
+        return false;
+    }
+
     std::string currentSetupSummaryLine() const {
         if (mode_ == net::SessionLaunchMode::Host) {
             const net::SessionLaunchConfig preview = buildLaunchConfigInternal();
             return "Level " + std::to_string(preview.levelSlot) +
                    " | Port " + std::to_string(preview.clientConnectPort) +
                    " | Host " + sessionLabelFallback(sessionLabelText_, playerNameText_) +
+                   " | Character " + preview.characterProfileName +
                    " | Bots " + std::to_string(preview.attackerBotCount + preview.defenderBotCount) +
                    " | " + std::to_string(preview.tickRateHz) + " / " +
                    std::to_string(preview.snapshotRateHz) + " Hz";
@@ -1173,6 +1398,36 @@ private:
         DrawRectangleRounded(rect, 0.08f, 8, fieldColor);
         DrawRectangleRoundedLines(rect, 0.08f, 8, borderColor);
 
+        if (field.field == Field::CharacterProfile) {
+            const Rectangle thumbnail{
+                rect.x + 10.0f,
+                rect.y + 7.0f,
+                58.0f,
+                rect.height - 14.0f
+            };
+            ui::drawCharacterSilhouetteThumbnail(
+                thumbnail,
+                selectedCharacterProfile().appearance,
+                Color{255, 130, 72, 255},
+                Fade(WHITE, 0.72f),
+                Color{16, 22, 32, 255});
+            drawTextLine(TypographyStyleId::FieldValue,
+                         *field.value,
+                         rect.x + 82.0f,
+                         rect.y + (rect.height - valueStyle.lineHeight) * 0.5f,
+                         WHITE);
+            const Vector2 center{
+                rect.x + rect.width - 24.0f,
+                rect.y + rect.height * 0.5f
+            };
+            const float direction = characterDropdownOpen_ ? -1.0f : 1.0f;
+            DrawTriangle(Vector2{center.x - 8.0f, center.y - 4.0f * direction},
+                         Vector2{center.x + 8.0f, center.y - 4.0f * direction},
+                         Vector2{center.x, center.y + 6.0f * direction},
+                         Color{180, 200, 230, 255});
+            return;
+        }
+
         drawTextLine(TypographyStyleId::FieldValue,
                      *field.value,
                      rect.x + 18.0f,
@@ -1196,6 +1451,82 @@ private:
                          rect.x + rect.width * 0.5f,
                          rect.y + rect.height * 0.5f - buttonStyle.lineHeight * 0.5f,
                          WHITE);
+    }
+
+    void drawCharacterDropdown() const {
+        if (!characterDropdownOpen_ || characterProfiles_.empty()) {
+            return;
+        }
+
+        const Rectangle dropdown = characterDropdownRect();
+        if (dropdown.width <= 0.0f || dropdown.height <= 0.0f) {
+            return;
+        }
+        const Vector2 mouse = display::mousePosition();
+        DrawRectangleRounded(dropdown, 0.045f, 10, Color{14, 20, 30, 252});
+        DrawRectangleRoundedLines(dropdown, 0.045f, 10, Color{78, 112, 166, 255});
+
+        const std::size_t visibleRows = visibleCharacterDropdownRowCount();
+        for (std::size_t visibleIndex = 0; visibleIndex < visibleRows; ++visibleIndex) {
+            const std::size_t profileIndex = characterDropdownFirstIndex_ + visibleIndex;
+            if (profileIndex >= characterProfiles_.size()) {
+                break;
+            }
+
+            const Rectangle row = characterDropdownRowRect(visibleIndex);
+            const bool selected = profileIndex == selectedCharacterProfileIndex_;
+            const bool hovered = CheckCollisionPointRec(mouse, row);
+            const Color fill = selected
+                ? Color{48, 78, 122, 245}
+                : hovered ? Color{30, 44, 66, 245}
+                          : Color{18, 27, 40, 236};
+            DrawRectangleRounded(Rectangle{row.x + 6.0f,
+                                           row.y + 5.0f,
+                                           row.width - 12.0f,
+                                           row.height - 10.0f},
+                                 0.08f,
+                                 8,
+                                 fill);
+            if (selected) {
+                DrawRectangleRoundedLines(Rectangle{row.x + 6.0f,
+                                                    row.y + 5.0f,
+                                                    row.width - 12.0f,
+                                                    row.height - 10.0f},
+                                          0.08f,
+                                          8,
+                                          SKYBLUE);
+            }
+
+            const Rectangle thumbnail{row.x + 16.0f, row.y + 8.0f, 66.0f, row.height - 16.0f};
+            ui::drawCharacterSilhouetteThumbnail(
+                thumbnail,
+                characterProfiles_[profileIndex].appearance,
+                Color{255, 130, 72, 255},
+                Fade(WHITE, selected ? 0.82f : 0.62f),
+                Color{12, 18, 28, 255});
+            drawTextLine(TypographyStyleId::FieldValue,
+                         characterProfiles_[profileIndex].name,
+                         row.x + 98.0f,
+                         row.y + (row.height -
+                                  typography().style(TypographyStyleId::FieldValue).lineHeight) *
+                                     0.5f,
+                         selected ? RAYWHITE : Color{218, 226, 240, 255});
+        }
+
+        if (characterProfiles_.size() > visibleRows) {
+            const std::string countLabel =
+                std::to_string(characterDropdownFirstIndex_ + 1u) + "-" +
+                std::to_string(std::min(characterProfiles_.size(),
+                                        characterDropdownFirstIndex_ + visibleRows)) +
+                " / " + std::to_string(characterProfiles_.size());
+            const int width =
+                typography().measureWidth(TypographyStyleId::Caption, countLabel);
+            drawTextLine(TypographyStyleId::Caption,
+                         countLabel,
+                         dropdown.x + dropdown.width - static_cast<float>(width) - 12.0f,
+                         dropdown.y + dropdown.height - 20.0f,
+                         Color{146, 166, 198, 255});
+        }
     }
 
     std::vector<std::string> wrappedSummaryLines(std::string_view summary, float maxWidth) const {
@@ -1331,6 +1662,7 @@ private:
                 drawTextField(field, setupFieldRect(field.field));
             }
         }
+        drawCharacterDropdown();
     }
 
     void renderTeamChoicePanel(const Rectangle& panel) const {
@@ -1407,6 +1739,7 @@ public:
                              ? sim::TeamId::Attacker
                              : sim::TeamId::Defender) {
         initializeLayout();
+        refreshCharacterProfiles();
         syncPreferredTeamText();
         syncTickRateText();
         syncSnapshotRateText();
@@ -1422,10 +1755,12 @@ public:
         step_ = Step::Setup;
         joinSubview_ = JoinSubview::Browser;
         hostAdvancedExpanded_ = false;
+        closeCharacterDropdown();
         validationError_.clear();
         preferredTeam_ = mode_ == net::SessionLaunchMode::Host
             ? sim::TeamId::Attacker
             : sim::TeamId::Defender;
+        refreshCharacterProfiles();
         syncPreferredTeamText();
         ensureHumanPlayerCapAtLeastLocalParticipants();
         resetDiscoveryBrowserState();
@@ -1563,6 +1898,42 @@ public:
         return shotEvaluationMode_;
     }
 
+    bool selectCharacterProfileForTest(const std::string& profileId) {
+        refreshCharacterProfiles();
+        for (std::size_t index = 0; index < characterProfiles_.size(); ++index) {
+            if (characterProfiles_[index].id == profileId) {
+                selectedCharacterProfileIndex_ = index;
+                syncCharacterProfileText();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    const std::string& characterProfileTextForTest() const {
+        return characterProfileText_;
+    }
+
+    std::size_t characterProfileCountForTest() const {
+        return characterProfiles_.size();
+    }
+
+    void openCharacterDropdownForTest() {
+        openCharacterDropdown();
+    }
+
+    bool characterDropdownOpenForTest() const {
+        return characterDropdownOpen_;
+    }
+
+    Rectangle characterDropdownRectForTest() const {
+        return characterDropdownRect();
+    }
+
+    std::size_t visibleCharacterDropdownRowCountForTest() const {
+        return visibleCharacterDropdownRowCount();
+    }
+
     void setDiscoveryPortForTest(std::uint16_t discoveryPort) {
         discoveryPort_ = discoveryPort;
     }
@@ -1605,6 +1976,7 @@ public:
                " | Tick " + std::to_string(preview.tickRateHz) +
                " | Snap " + std::to_string(preview.snapshotRateHz) +
                " | Humans " + std::to_string(preview.maxHumanPlayers) +
+               " | Character " + preview.characterProfileName +
                " | " + net::shotEvaluationModeSummary(preview.shotEvaluationMode) +
                " | Locals " + std::to_string(preview.localParticipantCount) +
                " (local test) | LAN peers use this machine's IPv4 + the same port" +
@@ -1876,6 +2248,16 @@ public:
         }
 
         if (!busy_ && step_ == Step::Setup) {
+            if (characterDropdownOpen_) {
+                const Rectangle dropdown = characterDropdownRect();
+                if (CheckCollisionPointRec(mousePos, dropdown)) {
+                    scrollCharacterDropdown(GetMouseWheelMove());
+                }
+                if (leftClickPressed && handleCharacterDropdownClick(mousePos)) {
+                    return Result{};
+                }
+            }
+
             if (mode_ == net::SessionLaunchMode::Host &&
                 CheckCollisionPointRec(mousePos, advancedButton_) &&
                 leftClickPressed) {
@@ -1916,6 +2298,10 @@ public:
                 const Rectangle rect = setupFieldRect(field.field);
                 if (CheckCollisionPointRec(mousePos, rect) && leftClickPressed) {
                     beginEditing(field.field);
+                    if (field.field == Field::CharacterProfile) {
+                        toggleCharacterDropdown();
+                        continue;
+                    }
                     if (isChoiceField(field.field)) {
                         cycleChoiceField(field.field, 1);
                     }

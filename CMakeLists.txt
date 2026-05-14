@@ -120,6 +120,7 @@ set(SOURCES
 )
 
 add_library(NetcodeSimSim STATIC
+    src/CharacterProfile.cpp
     src/SimulationRules.cpp
     src/WorldState.cpp
 )
@@ -155,6 +156,7 @@ endif()
 
 add_library(NetcodeSimClient STATIC
     src/Arena3D.cpp
+    src/CharacterPresetStore.cpp
     src/CheckpointStore.cpp
     src/ClientRuntime.cpp
     src/ControlBindings.cpp

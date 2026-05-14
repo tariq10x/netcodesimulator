@@ -497,14 +497,21 @@ void testMainMenuRoutesFirstClassSurfacesThroughTypedSelection() {
            "level-editor root selection should preserve a typed editor surface and entry point");
     menu.clearRequestedNavigation();
 
-    expect(menu.triggerOptionForTest(3) == GameMode::REPLAY_STUDIO,
+    expect(menu.triggerOptionForTest(3) == GameMode::CHARACTER_EDITOR,
+           "character editor should be a first-class top-level shell surface");
+    expect(menu.requestedSurface() == MainMenu::AppShellSurface::CharacterEditor &&
+               menu.requestedEntryPoint() == net::SessionEntryPoint::None,
+           "character-editor selection should remain distinct from session entry-point routing");
+    menu.clearRequestedNavigation();
+
+    expect(menu.triggerOptionForTest(4) == GameMode::REPLAY_STUDIO,
            "replay studio should be a first-class top-level shell surface");
     expect(menu.requestedSurface() == MainMenu::AppShellSurface::ReplayStudio &&
                menu.requestedEntryPoint() == net::SessionEntryPoint::Replay,
            "replay-studio root selection should preserve a typed replay surface and entry point");
     menu.clearRequestedNavigation();
 
-    expect(menu.triggerOptionForTest(4) == GameMode::SETTINGS,
+    expect(menu.triggerOptionForTest(5) == GameMode::SETTINGS,
            "settings should remain a first-class top-level shell surface");
     expect(menu.requestedSurface() == MainMenu::AppShellSurface::Settings &&
                menu.requestedEntryPoint() == net::SessionEntryPoint::None,
@@ -974,6 +981,8 @@ void testHostLaunchStartsServerProxyClientAndEntersRunning() {
     config.snapshotRateHz = 60u;
     config.maxHumanPlayers = 4u;
     config.shotEvaluationMode = net::ShotEvaluationMode::LivePosition;
+    config.characterProfileName = "Wide Shoulders";
+    config.characterAppearance = character::CharacterAppearance{1.66f, 0.25f, -12.0f};
     config.clientSessionId = 0x10010001u;
     config.clientConnectTimeoutUs = 300'000u;
 
@@ -997,6 +1006,9 @@ void testHostLaunchStartsServerProxyClientAndEntersRunning() {
     expect(controller.config().sessionLabel == "Player LAN Match" &&
                controller.config().shotEvaluationMode == net::ShotEvaluationMode::LivePosition,
            "host session configuration should preserve the selected session label and shot rule");
+    expect(controller.config().characterProfileName == "Wide Shoulders" &&
+               std::fabs(controller.config().characterAppearance.shoulderWidth - 1.66f) < 0.0001f,
+           "host session configuration should preserve the selected character profile");
     expect(controller.config().serverListenPort != 0u &&
            controller.config().proxyUpstreamServerPort == controller.config().serverListenPort,
            "host startup should bind the internal server first and point the proxy upstream to that actual port");
@@ -1012,6 +1024,11 @@ void testHostLaunchStartsServerProxyClientAndEntersRunning() {
     expect(hostedMetadata.publicJoinPort == 45100u &&
                hostedMetadata.shotEvaluationMode == net::ShotEvaluationMode::LivePosition,
            "hosted startup metadata should include the public join port and selected shot rule");
+    expect(hostedMetadata.characterProfileName == "Wide Shoulders" &&
+               std::fabs(hostedMetadata.characterAppearance.shoulderWidth - 1.66f) < 0.0001f &&
+               std::fabs(hostedMetadata.characterAppearance.shoulderHeight - 0.25f) < 0.0001f &&
+               std::fabs(hostedMetadata.characterAppearance.shoulderAngleDeg + 12.0f) < 0.0001f,
+           "hosted startup metadata should include the selected character appearance");
 
     const bool running = waitForPredicate([&]() {
         controller.update(1.0f / 60.0f, nullptr);
@@ -1122,6 +1139,8 @@ void testHostedWelcomeCarriesSelectedSessionMetadata() {
         net::makeHostSessionLaunchConfig(8, "host-player", 45180u);
     config.sessionLabel = "Metadata Match";
     config.shotEvaluationMode = net::ShotEvaluationMode::SeenPosition;
+    config.characterProfileName = "Tall Shoulders";
+    config.characterAppearance = character::CharacterAppearance{1.48f, 0.21f, 9.0f};
     config.clientSessionId = 0x18000001u;
     config.clientConnectTimeoutUs = 400'000u;
 
@@ -1171,6 +1190,11 @@ void testHostedWelcomeCarriesSelectedSessionMetadata() {
            "welcome packet should preserve the authoritative level identity inside hosted metadata");
     expect(welcome.sessionMetadata.shotEvaluationMode == net::ShotEvaluationMode::SeenPosition,
            "welcome packet should preserve the selected shot-evaluation rule");
+    expect(welcome.sessionMetadata.characterProfileName == "Tall Shoulders" &&
+               std::fabs(welcome.sessionMetadata.characterAppearance.shoulderWidth - 1.48f) < 0.0001f &&
+               std::fabs(welcome.sessionMetadata.characterAppearance.shoulderHeight - 0.21f) < 0.0001f &&
+               std::fabs(welcome.sessionMetadata.characterAppearance.shoulderAngleDeg - 9.0f) < 0.0001f,
+           "welcome packet should preserve the selected character appearance");
 }
 
 void testHostedSessionAdvertisesAuthoritativeMetadataAfterStartup() {

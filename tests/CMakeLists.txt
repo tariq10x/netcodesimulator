@@ -164,6 +164,14 @@ target_link_libraries(CheckpointStoreTests PRIVATE NetcodeSimClient)
 
 add_test(NAME CheckpointStoreTests COMMAND CheckpointStoreTests)
 
+add_executable(CharacterProfileTests
+    CharacterProfileTests.cpp
+)
+
+target_link_libraries(CharacterProfileTests PRIVATE NetcodeSimClient)
+
+add_test(NAME CharacterProfileTests COMMAND CharacterProfileTests)
+
 add_executable(ReplayTimelineTests
     ReplayTimelineTests.cpp
 )
