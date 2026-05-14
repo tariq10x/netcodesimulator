@@ -60,6 +60,18 @@ const net::RuntimeParamChangeRequest* findRuntimeParamRequest(
     return nullptr;
 }
 
+const net::RuntimeParamChangeRequest* findRuntimeParamRequestFrom(
+    const std::vector<net::RuntimeParamChangeRequest>& requests,
+    std::size_t startIndex,
+    const std::string& key) {
+    for (std::size_t index = startIndex; index < requests.size(); ++index) {
+        if (requests[index].key == key) {
+            return &requests[index];
+        }
+    }
+    return nullptr;
+}
+
 const RuntimeSettingsOverlay::ControlState* findOverlayControl(
     const RuntimeSettingsOverlay::State& state,
     RuntimeSettingsOverlay::ControlId controlId) {
@@ -1366,6 +1378,7 @@ void testGuestRuntimeOverlayOnlyShowsEditableSettings() {
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::ReconciliationStrategy) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::SmoothWindowMs) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::TickRate) == nullptr &&
+               findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::GlobalLatency) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::VisualizationMode) == nullptr &&
                findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::StudyEventLogging) == nullptr &&
                overlayState.targetEditor.latency.visible &&
@@ -1419,6 +1432,8 @@ void testHostRuntimeOverlayShowsAllParticipantSettings() {
         findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::SnapshotRate);
     const RuntimeSettingsOverlay::ControlState* eventLoggingControl =
         findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::StudyEventLogging);
+    const RuntimeSettingsOverlay::ControlState* globalLatencyControl =
+        findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::GlobalLatency);
     const RuntimeSettingsOverlay::ControlState* visualizationControl =
         findOverlayControl(overlayState, RuntimeSettingsOverlay::ControlId::VisualizationMode);
     expect(overlayState.targets.size() == 2u,
@@ -1431,6 +1446,12 @@ void testHostRuntimeOverlayShowsAllParticipantSettings() {
                eventLoggingControl->type == RuntimeSettingsOverlay::ControlType::Toggle &&
                !eventLoggingControl->toggleValue,
            "host runtime settings should expose event logging as an off-by-default session toggle");
+    expect(globalLatencyControl != nullptr &&
+               globalLatencyControl->type == RuntimeSettingsOverlay::ControlType::Slider &&
+               globalLatencyControl->enabled &&
+               globalLatencyControl->sliderMin == 0.0f &&
+               globalLatencyControl->sliderMax == 250.0f,
+           "host runtime settings should expose a host-only global latency slider");
     expect(visualizationControl != nullptr &&
                visualizationControl->type == RuntimeSettingsOverlay::ControlType::Choice &&
                visualizationControl->valueLabel == "Diagnostic" &&
@@ -2201,6 +2222,116 @@ void testConnectedClientTargetsBotRuntimeParamsThroughSharedControlPath() {
     expect(contains(client.diagnosticsModel()->localNetworkSummaryLines(),
                     std::string("Applies to bot ") + std::to_string(defenderBotId)),
            "bot-targeted diagnostics should identify the authoritative bot target in the panel summary");
+}
+
+void testHostGlobalLatencyAppliesToAllTargetsAndLeavesIndividualOverridesAvailable() {
+    net::ServerConfig serverConfig;
+    serverConfig.defenderBotCount = 1u;
+
+    LoopbackServerHarness server(HarnessMode::AcceptClient, serverConfig);
+    expect(server.start(), "server harness should bind loopback");
+
+    net::ClientConfig config;
+    config.serverHost = "127.0.0.1";
+    config.serverPort = server.port();
+    config.playerName = "global-latency-host";
+    config.sessionId = 6352u;
+
+    net::ClientRuntime client(config);
+    expect(client.start(), "client should start");
+    pumpUntilConnected(&client, &server);
+
+    const std::uint16_t remotePeerId = server.addRemoteClient(6353u, "global-latency-guest");
+    for (int attempt = 0; attempt < 30; ++attempt) {
+        pumpLoopbackFrame(&client, &server);
+        if (client.roster().size() >= 3u) {
+            break;
+        }
+    }
+
+    net::UdpSocket proxyServer;
+    expect(proxyServer.bind({"127.0.0.1", 0u}), "proxy server socket should bind");
+    net::ProxyConfig proxyConfig;
+    proxyConfig.serverEndpoint = {"127.0.0.1", proxyServer.localPort()};
+    net::ProxyRuntime proxy(proxyConfig);
+    expect(proxy.start(), "global latency proxy should start");
+
+    net::ProxyLinkConfig remoteUpstream;
+    remoteUpstream.lossPct = 12.0f;
+    remoteUpstream.reorderPct = 7.0f;
+    proxy.setPeerLinkConfig(remotePeerId, true, remoteUpstream);
+    client.attachProxyDiagnostics(&proxy, client.peerId());
+
+    const int defenderBotId = requireBotActorId(client.roster(), sim::TeamId::Defender);
+    RuntimeSettingsOverlay::Action globalLatencyAction;
+    globalLatencyAction.kind = RuntimeSettingsOverlay::Action::Kind::SliderChanged;
+    globalLatencyAction.controlId = RuntimeSettingsOverlay::ControlId::GlobalLatency;
+    globalLatencyAction.sliderValue = 80.0f;
+    net::ClientRuntimeTestAccess::applyRuntimeSettingsAction(client, globalLatencyAction);
+
+    for (int frame = 0; frame < 30; ++frame) {
+        pumpLoopbackFrame(&client, &server);
+    }
+
+    const auto& runtimeRequests = server.observedRuntimeParamRequests();
+    const std::string localLatencyKey =
+        "net.player[" + std::to_string(client.peerId()) + "].latency_ms";
+    const std::string remoteLatencyKey =
+        "net.player[" + std::to_string(remotePeerId) + "].latency_ms";
+    const std::string botLatencyKey =
+        "net.bot[" + std::to_string(defenderBotId) + "].latency_ms";
+    const net::RuntimeParamChangeRequest* localGlobalRequest =
+        findRuntimeParamRequest(runtimeRequests, localLatencyKey);
+    const net::RuntimeParamChangeRequest* remoteGlobalRequest =
+        findRuntimeParamRequest(runtimeRequests, remoteLatencyKey);
+    const net::RuntimeParamChangeRequest* botGlobalRequest =
+        findRuntimeParamRequest(runtimeRequests, botLatencyKey);
+    expect(localGlobalRequest != nullptr &&
+               localGlobalRequest->value == 80.0f,
+           "global latency should emit a latency request for the host participant");
+    expect(remoteGlobalRequest != nullptr &&
+               remoteGlobalRequest->scope == net::RuntimeParamScope::Player &&
+               remoteGlobalRequest->targetId == remotePeerId &&
+               remoteGlobalRequest->value == 80.0f,
+           "global latency should emit a latency request for remote human participants");
+    expect(botGlobalRequest != nullptr &&
+               botGlobalRequest->scope == net::RuntimeParamScope::Bot &&
+               botGlobalRequest->targetId == defenderBotId &&
+               botGlobalRequest->value == 80.0f,
+           "global latency should emit a latency request for bot participants");
+
+    const net::ProxyLinkConfig preservedRemoteUpstream =
+        proxy.peerLinkConfig(remotePeerId, true);
+    expect(preservedRemoteUpstream.baseDelayMs == 80.0f &&
+               preservedRemoteUpstream.lossPct == 12.0f &&
+               preservedRemoteUpstream.reorderPct == 7.0f,
+           "global latency should update only proxy delay while preserving per-peer loss and reorder settings");
+
+    const std::size_t requestCountAfterGlobal = runtimeRequests.size();
+    RuntimeSettingsOverlay::Action individualLatencyAction;
+    individualLatencyAction.kind = RuntimeSettingsOverlay::Action::Kind::SliderChanged;
+    individualLatencyAction.controlId = RuntimeSettingsOverlay::ControlId::TargetLatency;
+    individualLatencyAction.sliderValue = 35.0f;
+    net::ClientRuntimeTestAccess::applyRuntimeSettingsAction(client, individualLatencyAction);
+    for (int frame = 0; frame < 30; ++frame) {
+        pumpLoopbackFrame(&client, &server);
+    }
+
+    const auto& requestsAfterIndividual = server.observedRuntimeParamRequests();
+    const net::RuntimeParamChangeRequest* localOverrideRequest =
+        findRuntimeParamRequestFrom(requestsAfterIndividual,
+                                    requestCountAfterGlobal,
+                                    localLatencyKey);
+    expect(localOverrideRequest != nullptr &&
+               localOverrideRequest->value == 35.0f,
+           "individual latency should remain available after the last global latency update");
+    expect(findRuntimeParamRequestFrom(requestsAfterIndividual,
+                                       requestCountAfterGlobal,
+                                       remoteLatencyKey) == nullptr &&
+               findRuntimeParamRequestFrom(requestsAfterIndividual,
+                                           requestCountAfterGlobal,
+                                           botLatencyKey) == nullptr,
+           "individual latency should not reapply the previous global value to other targets");
 }
 
 void testHostDiagnosticsRemainDistinctFromLocalNetworkPanel() {
@@ -3686,6 +3817,7 @@ int main() {
         testUiModeKeepsClientConnectedAndSnapshotsAdvancing();
         testConnectedClientOpensLocalNetworkPanelAndAdjustsSettingsWithoutDisconnect();
         testConnectedClientTargetsBotRuntimeParamsThroughSharedControlPath();
+        testHostGlobalLatencyAppliesToAllTargetsAndLeavesIndividualOverridesAvailable();
         testHostDiagnosticsRemainDistinctFromLocalNetworkPanel();
         testConnectedClientTogglesInterpolationWithoutDisconnect();
         testConnectedClientTogglesPredictionWithoutDisconnect();

@@ -31,6 +31,8 @@ public:
 
     void setDefaultLinkConfig(bool upstream, const ProxyLinkConfig& config) override;
     void setPeerLinkConfig(std::uint16_t peerId, bool upstream, const ProxyLinkConfig& config) override;
+    ProxyLinkConfig defaultLinkConfig(bool upstream) const override;
+    ProxyLinkConfig peerLinkConfig(std::uint16_t peerId, bool upstream) const override;
 
     std::uint16_t clientListenPort() const override;
     std::uint16_t serverListenPort() const override;

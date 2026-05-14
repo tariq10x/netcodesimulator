@@ -225,6 +225,8 @@ private:
     void previewLocalParticipantRuntimeSetting(RuntimeSettingsOverlay::ControlId controlId,
                                                float value);
     void syncDiagnosticsTargetPeerId();
+    float displayedGlobalLatencyMs() const;
+    bool applyGlobalLatencyMs(float latencyMs);
     void applyLocalNetworkSettings();
     void refreshDiagnostics();
     bool maybeSendIdleKeepalive();
@@ -377,6 +379,7 @@ private:
     std::unique_ptr<DiagnosticsModel> diagnosticsModel_{};
     RuntimeSettingsOverlay runtimeSettingsOverlay_{};
     std::uint16_t runtimeSettingsTargetId_{0u};
+    std::optional<float> lastGlobalLatencyMs_{};
     sim::TeamId pendingTeamRequest_{sim::TeamId::None};
     bool teamMenuVisible_{false};
     sim::TeamId teamMenuSelection_{sim::TeamId::Attacker};

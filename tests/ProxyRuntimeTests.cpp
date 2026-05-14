@@ -300,6 +300,41 @@ void testPeerSpecificOverridesRemainIsolated() {
            "the targeted participant should still receive the configured delay");
 }
 
+void testLinkConfigReadsReturnEffectiveDefaultsAndPeerOverrides() {
+    net::ProxyConfig config;
+    config.defaultUpstream.baseDelayMs = 15.0f;
+    config.defaultUpstream.lossPct = 3.0f;
+    config.defaultDownstream.baseDelayMs = 25.0f;
+    config.defaultDownstream.reorderPct = 4.0f;
+
+    net::ProxyRuntime proxy(config);
+    net::TransportArtifactAdapter& transport = proxy;
+    expect(transport.start(), "proxy should start before peer override config reads");
+
+    const net::ProxyLinkConfig inheritedUpstream =
+        transport.peerLinkConfig(42u, true);
+    const net::ProxyLinkConfig inheritedDownstream =
+        transport.peerLinkConfig(42u, false);
+    expect(inheritedUpstream.baseDelayMs == 15.0f &&
+               inheritedUpstream.lossPct == 3.0f &&
+               inheritedDownstream.baseDelayMs == 25.0f &&
+               inheritedDownstream.reorderPct == 4.0f,
+           "unset peer link config reads should return the effective directional defaults");
+
+    net::ProxyLinkConfig peerOverride = inheritedUpstream;
+    peerOverride.baseDelayMs = 70.0f;
+    peerOverride.reorderPct = 9.0f;
+    transport.setPeerLinkConfig(42u, true, peerOverride);
+
+    const net::ProxyLinkConfig storedOverride =
+        transport.peerLinkConfig(42u, true);
+    expect(storedOverride.baseDelayMs == 70.0f &&
+               storedOverride.lossPct == 3.0f &&
+               storedOverride.reorderPct == 9.0f &&
+               transport.defaultLinkConfig(true).baseDelayMs == 15.0f,
+           "peer link config reads should preserve overridden fields without mutating defaults");
+}
+
 void testUpstreamCommandsForkImmediateControlStream() {
     net::UdpSocket client;
     net::UdpSocket server;
@@ -340,6 +375,7 @@ int main() {
         testFixedSeedLossAndDuplicationAreDeterministic();
         testZeroImpairmentRelayPreservesOrderAndDelivery();
         testPeerSpecificOverridesRemainIsolated();
+        testLinkConfigReadsReturnEffectiveDefaultsAndPeerOverrides();
         testUpstreamCommandsForkImmediateControlStream();
         std::cout << "ProxyRuntimeTests: PASS\n";
         return 0;

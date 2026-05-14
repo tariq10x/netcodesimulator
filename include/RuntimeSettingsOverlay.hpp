@@ -41,7 +41,8 @@ public:
         StudyEventLogging = 15,
         ReplayGhosts = 16,
         ReplayTrack = 17,
-        VisualizationMode = 18
+        VisualizationMode = 18,
+        GlobalLatency = 19
     };
 
     struct ChoiceState {
@@ -274,7 +275,8 @@ private:
         UpLoss = 6,
         DownLoss = 7,
         UpReorder = 8,
-        DownReorder = 9
+        DownReorder = 9,
+        GlobalLatency = 10
     };
 
     struct Layout {
@@ -1312,6 +1314,8 @@ private:
                 return DragTarget::SmoothWindow;
             case ControlId::TargetLatency:
                 return DragTarget::TargetLatency;
+            case ControlId::GlobalLatency:
+                return DragTarget::GlobalLatency;
             case ControlId::TargetLoss:
                 return DragTarget::TargetLoss;
             case ControlId::UpDelay:

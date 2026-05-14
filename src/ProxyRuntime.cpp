@@ -392,6 +392,20 @@ void ProxyRuntime::setPeerLinkConfig(std::uint16_t peerId, bool upstream, const 
     links[peerId] = state;
 }
 
+ProxyLinkConfig ProxyRuntime::defaultLinkConfig(bool upstream) const {
+    return upstream ? config_.defaultUpstream : config_.defaultDownstream;
+}
+
+ProxyLinkConfig ProxyRuntime::peerLinkConfig(std::uint16_t peerId, bool upstream) const {
+    if (impl_ == nullptr) {
+        return defaultLinkConfig(upstream);
+    }
+
+    const auto& links = linkMapFor(static_cast<const Impl*>(impl_), upstream);
+    const auto it = links.find(peerId);
+    return it != links.end() ? it->second.config : defaultLinkConfig(upstream);
+}
+
 std::uint16_t ProxyRuntime::clientListenPort() const {
     return clientSocket_.localPort();
 }

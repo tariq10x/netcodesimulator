@@ -42,6 +42,8 @@ public:
 
     virtual void setDefaultLinkConfig(bool upstream, const ProxyLinkConfig& config) = 0;
     virtual void setPeerLinkConfig(std::uint16_t peerId, bool upstream, const ProxyLinkConfig& config) = 0;
+    virtual ProxyLinkConfig defaultLinkConfig(bool upstream) const = 0;
+    virtual ProxyLinkConfig peerLinkConfig(std::uint16_t peerId, bool upstream) const = 0;
 
     virtual std::uint16_t clientListenPort() const = 0;
     virtual std::uint16_t serverListenPort() const = 0;

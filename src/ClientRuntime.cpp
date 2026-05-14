@@ -59,6 +59,7 @@ constexpr float kStudyEnvironmentDimFactor = 1.0f;
 constexpr float kStudyFovRangeMeters = 16.0f;
 constexpr float kStudyFovVerticalDegrees = 70.0f;
 constexpr std::size_t kMaxKillFeedEntries = 4u;
+constexpr float kRuntimeLatencySliderMaxMs = 250.0f;
 constexpr std::string_view kEventLoggingAppliedPrefix = "applied:";
 
 Color combatTraceColor(bool authoritative, bool hit) {
@@ -3406,6 +3407,9 @@ void ClientRuntime::applyRuntimeSettingsAction(const RuntimeSettingsOverlay::Act
                         refreshDiagnostics();
                     }
                     return;
+                case RuntimeSettingsOverlay::ControlId::GlobalLatency:
+                    applyGlobalLatencyMs(action.sliderValue);
+                    return;
                 case RuntimeSettingsOverlay::ControlId::TargetLoss:
                     if (canEditTransportSettings(selectedTargetId)) {
                         diagnosticsModel_->setLocalLossPct(action.sliderValue);
@@ -3634,6 +3638,19 @@ RuntimeSettingsOverlay::State ClientRuntime::buildRuntimeSettingsOverlayState() 
         eventLogging.enabled = true;
         state.leftControls.push_back(eventLogging);
 
+        RuntimeSettingsOverlay::ControlState globalLatency;
+        globalLatency.id = RuntimeSettingsOverlay::ControlId::GlobalLatency;
+        globalLatency.type = RuntimeSettingsOverlay::ControlType::Slider;
+        globalLatency.label = "Global Latency";
+        globalLatency.description =
+            "Host only. Applies latency to every current participant; individual latency sliders can still override one participant afterward.";
+        globalLatency.enabled = hasLocalNetworkControls();
+        globalLatency.sliderMin = 0.0f;
+        globalLatency.sliderMax = kRuntimeLatencySliderMaxMs;
+        globalLatency.sliderValue = displayedGlobalLatencyMs();
+        globalLatency.valueLabel = runtimeSettingsValueLabel(globalLatency.sliderValue, "ms");
+        state.leftControls.push_back(globalLatency);
+
         RuntimeSettingsOverlay::ControlState tickRate;
         tickRate.id = RuntimeSettingsOverlay::ControlId::TickRate;
         tickRate.type = RuntimeSettingsOverlay::ControlType::Choice;
@@ -3751,7 +3768,7 @@ RuntimeSettingsOverlay::State ClientRuntime::buildRuntimeSettingsOverlayState() 
     latency.visible = showEditableTransportControls;
     latency.enabled = showEditableTransportControls;
     latency.sliderMin = 0.0f;
-    latency.sliderMax = 250.0f;
+    latency.sliderMax = kRuntimeLatencySliderMaxMs;
     latency.sliderValue = editorLatency;
     latency.valueLabel = runtimeSettingsValueLabel(editorLatency, "ms");
     state.targetEditor.latency = latency;
@@ -3888,6 +3905,87 @@ void ClientRuntime::setRuntimeSettingsTarget(std::uint16_t targetId) {
         syncDiagnosticsAuthoritativeTargetState();
         refreshDiagnostics();
     }
+}
+
+float ClientRuntime::displayedGlobalLatencyMs() const {
+    if (lastGlobalLatencyMs_.has_value()) {
+        return *lastGlobalLatencyMs_;
+    }
+
+    float totalLatencyMs = 0.0f;
+    std::size_t targetCount = 0u;
+    for (const sim::RosterEntry& entry : roster_) {
+        if (entry.actorId < 0 ||
+            entry.actorId > static_cast<int>(std::numeric_limits<std::uint16_t>::max())) {
+            continue;
+        }
+
+        const auto targetId = static_cast<std::uint16_t>(entry.actorId);
+        if (!shouldShowRuntimeSettingsTarget(targetId) || !canEditTransportSettings(targetId)) {
+            continue;
+        }
+
+        totalLatencyMs += static_cast<float>(entry.latencyMs);
+        ++targetCount;
+    }
+
+    return targetCount > 0u ? totalLatencyMs / static_cast<float>(targetCount) : 0.0f;
+}
+
+bool ClientRuntime::applyGlobalLatencyMs(float latencyMs) {
+    if (!hasLocalNetworkControls() ||
+        state_ != ClientConnectionState::Connected ||
+        peerId_ == 0u ||
+        !isLocalHost()) {
+        return false;
+    }
+
+    const float clampedLatencyMs = std::clamp(latencyMs, 0.0f, kRuntimeLatencySliderMaxMs);
+    std::size_t requestedTargetCount = 0u;
+    for (const sim::RosterEntry& entry : roster_) {
+        if (entry.actorId < 0 ||
+            entry.actorId > static_cast<int>(std::numeric_limits<std::uint16_t>::max())) {
+            continue;
+        }
+
+        const auto targetId = static_cast<std::uint16_t>(entry.actorId);
+        if (!shouldShowRuntimeSettingsTarget(targetId) || !canEditTransportSettings(targetId)) {
+            continue;
+        }
+
+        if (transportTargetUsesProxyLink(targetId)) {
+            ProxyLinkConfig upstreamConfig = hostProxy_->peerLinkConfig(targetId, true);
+            upstreamConfig.baseDelayMs = clampedLatencyMs;
+            ProxyLinkConfig downstreamConfig = hostProxy_->peerLinkConfig(targetId, false);
+            downstreamConfig.baseDelayMs = clampedLatencyMs;
+            hostProxy_->setPeerLinkConfig(targetId, true, upstreamConfig);
+            hostProxy_->setPeerLinkConfig(targetId, false, downstreamConfig);
+        }
+
+        if (diagnosticsModel_ != nullptr && diagnosticsModel_->targetPeerId() == targetId) {
+            diagnosticsModel_->setLocalLatencyMs(clampedLatencyMs);
+        }
+
+        if (sendRuntimeParamChangeRequest(runtimeParamScopeForTargetId(targetId),
+                                          static_cast<std::int32_t>(targetId),
+                                          runtimeParamKeyForTarget(targetId, "latency_ms"),
+                                          clampedLatencyMs)) {
+            ++requestedTargetCount;
+        }
+    }
+
+    lastGlobalLatencyMs_ = clampedLatencyMs;
+    refreshDiagnostics();
+    if (requestedTargetCount == 0u) {
+        return false;
+    }
+
+    lastCombatEventText_ = "Requested global latency " +
+                           runtimeSettingsValueLabel(clampedLatencyMs, "ms") +
+                           " for " +
+                           std::to_string(requestedTargetCount) +
+                           (requestedTargetCount == 1u ? " participant" : " participants");
+    return true;
 }
 
 void ClientRuntime::applyLocalNetworkSettings() {
