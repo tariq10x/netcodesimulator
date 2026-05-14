@@ -431,7 +431,7 @@ void testClientSyncRuntimeBuildsAndDispatchesCommandsAndControlPackets() {
                fixture.localPlayerState.position.y == authoritativeState.position.y &&
                fixture.localPlayerState.position.z == authoritativeState.position.z,
            "ClientSyncRuntime should keep the authoritative local player state unchanged when prediction is disabled");
-    expect(!syncRuntime.shouldPredictFireAttempt(fixture.context(), input),
+    expect(!syncRuntime.shouldPredictFireAttempt(fixture.context(), command, authoritativeState),
            "ClientSyncRuntime should suppress immediate fire prediction when prediction is disabled");
 
     fixture.predictionEnabled = true;
@@ -444,8 +444,12 @@ void testClientSyncRuntimeBuildsAndDispatchesCommandsAndControlPackets() {
                absoluteDifference(fixture.localPlayerState.position.y, predictedState.position.y) < 0.0001f &&
                absoluteDifference(fixture.localPlayerState.position.z, predictedState.position.z) < 0.0001f,
            "ClientSyncRuntime should apply the predicted local player state when prediction is enabled");
-    expect(syncRuntime.shouldPredictFireAttempt(fixture.context(), input),
+    expect(syncRuntime.shouldPredictFireAttempt(fixture.context(), command, authoritativeState),
            "ClientSyncRuntime should preserve immediate fire prediction when prediction is enabled");
+    sim::PlayerState cooldownState = authoritativeState;
+    cooldownState.weaponCooldownRemaining = 0.25f;
+    expect(!syncRuntime.shouldPredictFireAttempt(fixture.context(), command, cooldownState),
+           "ClientSyncRuntime should suppress immediate fire prediction while the weapon is cooling down");
 
     net::UdpSocket sender;
     net::UdpSocket receiver;

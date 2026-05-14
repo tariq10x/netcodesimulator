@@ -1,6 +1,5 @@
 #pragma once
 #include <raylib.h>
-#include <raymath.h>
 #include "Config3D.hpp"
 
 class LaserBeam3D {
@@ -41,29 +40,13 @@ public:
         Color col = color;
         col.a = (unsigned char)(getAlpha() * 255);
 
-        // Thick laser beam - red outer layer
-        float radius = thickness;
-        DrawCylinderEx(start, end, radius, radius, 12, col);
+        const float radius = thickness;
+        DrawCylinderEx(start, end, radius, radius, 8, col);
 
         if (!ghost) {
-            // Yellow inner core - smaller and brighter
             Color yellowCore = YELLOW;
             yellowCore.a = (unsigned char)(getAlpha() * 255);
-            DrawCylinderEx(start, end, radius * 0.4f, radius * 0.4f, 8, yellowCore);
-
-            // Draw spheres along the beam for visibility from all angles
-            Vector3 direction = Vector3Subtract(end, start);
-            float length = Vector3Length(direction);
-            Vector3 normalized = Vector3Normalize(direction);
-
-            // Draw spheres every 5 units along the beam (less frequent for cleaner look)
-            const int sphereSteps = static_cast<int>(length / 5.0f);
-            for (int step = 0; step <= sphereSteps; ++step) {
-                const float dist = static_cast<float>(step) * 5.0f;
-                Vector3 spherePos = Vector3Add(start, Vector3Scale(normalized, dist));
-                DrawSphere(spherePos, radius, col);              // Red outer
-                DrawSphere(spherePos, radius * 0.4f, yellowCore); // Yellow core
-            }
+            DrawCylinderEx(start, end, radius * 0.4f, radius * 0.4f, 6, yellowCore);
         }
     }
 

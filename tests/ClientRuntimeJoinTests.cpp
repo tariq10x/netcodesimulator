@@ -2581,8 +2581,12 @@ void testClientSyncRuntimeKeepsHostAndJoinPredictionSemanticsAligned() {
                absoluteDifference(joinFixture.localPlayerState.position.z,
                                   joinFixture.latestSnapshot.localPlayerState.position.z) < 0.0001f,
            "host and joined sync contexts should both preserve authoritative local state when prediction is disabled");
-    expect(!syncRuntime.shouldPredictFireAttempt(hostFixture.context(), input) &&
-               !syncRuntime.shouldPredictFireAttempt(joinFixture.context(), input),
+    expect(!syncRuntime.shouldPredictFireAttempt(hostFixture.context(),
+                                                 hostCommand,
+                                                 hostFixture.latestSnapshot.localPlayerState) &&
+               !syncRuntime.shouldPredictFireAttempt(joinFixture.context(),
+                                                     joinCommand,
+                                                     joinFixture.latestSnapshot.localPlayerState),
            "host and joined sync contexts should both suppress immediate fire prediction when disabled");
 
     hostFixture.predictionEnabled = true;
@@ -2592,8 +2596,12 @@ void testClientSyncRuntimeKeepsHostAndJoinPredictionSemanticsAligned() {
     expect(hostFixture.predictionBuffer.pendingCommandCount() == 1u &&
                joinFixture.predictionBuffer.pendingCommandCount() == 1u,
            "host and joined sync contexts should both enqueue pending commands when prediction is enabled");
-    expect(syncRuntime.shouldPredictFireAttempt(hostFixture.context(), input) &&
-               syncRuntime.shouldPredictFireAttempt(joinFixture.context(), input),
+    expect(syncRuntime.shouldPredictFireAttempt(hostFixture.context(),
+                                                hostCommand,
+                                                hostFixture.latestSnapshot.localPlayerState) &&
+               syncRuntime.shouldPredictFireAttempt(joinFixture.context(),
+                                                    joinCommand,
+                                                    joinFixture.latestSnapshot.localPlayerState),
            "host and joined sync contexts should both preserve immediate fire prediction when enabled");
     expect(absoluteDifference(hostFixture.localPlayerState.position.x, joinFixture.localPlayerState.position.x) < 0.0001f &&
                absoluteDifference(hostFixture.localPlayerState.position.y, joinFixture.localPlayerState.position.y) < 0.0001f &&

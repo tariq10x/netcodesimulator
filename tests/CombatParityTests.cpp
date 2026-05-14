@@ -116,8 +116,38 @@ void testImmediateLocalFireFeedbackAppearsBeforeSnapshot() {
            "the first immediate trace should be predictive local feedback");
     expect(ClientAccess::firstCombatTraceThickness(*client) >= 0.05f,
            "predictive local fire should create a thick beam presentation object");
+    expect(ClientAccess::firstCombatTraceLength(*client) > 20.0f &&
+               ClientAccess::firstCombatTraceLength(*client) < 60.0f,
+           "predictive local fire should render a playable-area-length beam instead of the full hitscan range");
     expect(client->lastCombatEventText() == "Shot fired (pending)",
            "local fire feedback should remain visible while awaiting authoritative confirmation");
+}
+
+void testImmediateLocalFireFeedbackRespectsWeaponCooldown() {
+    auto client = makeConnectedClient();
+
+    InputHandler3D::InputState firstFire;
+    firstFire.firePressed = true;
+    client->update(1.0f / 60.0f, &firstFire);
+    expect(ClientAccess::combatTraceCount(*client) == 1u,
+           "first eligible fire input should create immediate local feedback");
+
+    InputHandler3D::InputState cooldownFire;
+    cooldownFire.firePressed = true;
+    client->update(1.0f / 60.0f, &cooldownFire);
+    expect(ClientAccess::combatTraceCount(*client) == 1u,
+           "fire input during local weapon cooldown should not create rejected predicted beams");
+
+    for (int frame = 0; frame < 30; ++frame) {
+        InputHandler3D::InputState idle;
+        client->update(1.0f / 60.0f, &idle);
+    }
+
+    InputHandler3D::InputState readyFire;
+    readyFire.firePressed = true;
+    client->update(1.0f / 60.0f, &readyFire);
+    expect(ClientAccess::combatTraceCount(*client) == 1u,
+           "eligible fire after cooldown should create a fresh predicted beam");
 }
 
 void testMissRemainsVisibleWithoutDamageEvent() {
@@ -511,6 +541,7 @@ int main() {
         (void)scopedDataRoot;
 
         testImmediateLocalFireFeedbackAppearsBeforeSnapshot();
+        testImmediateLocalFireFeedbackRespectsWeaponCooldown();
         testMissRemainsVisibleWithoutDamageEvent();
         testAuthoritativeCombatEventsConsumedExactlyOnce();
         testAuthoritativeSnapshotPackagesCompleteServerOwnedState();

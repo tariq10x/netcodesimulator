@@ -49,6 +49,7 @@ constexpr std::uint64_t kKillFeedLifetimeUs = 4'000'000u;
 constexpr float kCombatBeamLifetimeSeconds =
     static_cast<float>(kCombatTraceLifetimeUs) / 1'000'000.0f;
 constexpr float kCombatBeamThickness = 0.05f;
+constexpr float kMinCombatTraceVisualDistance = 0.5f;
 constexpr float kLocalRespawnDelaySeconds = 5.0f;
 constexpr std::uint16_t kAuthoritativeHostPeerId = 1u;
 constexpr float kDetachedObserverSpeedMultiplier = 2.5f;
@@ -68,6 +69,72 @@ Color combatTraceColor(bool authoritative, bool hit) {
     }
     return hit ? Color{80, 255, 120, 255}
                : Color{255, 110, 110, 255};
+}
+
+float length(const sim::Vec3& value) {
+    return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
+}
+
+sim::Vec3 normalized(const sim::Vec3& value) {
+    const float valueLength = length(value);
+    if (valueLength <= 0.0001f) {
+        return sim::Vec3{};
+    }
+    return sim::Vec3{
+        value.x / valueLength,
+        value.y / valueLength,
+        value.z / valueLength
+    };
+}
+
+float distanceToArenaBoundary2D(const sim::Vec3& origin,
+                                const sim::Vec3& direction,
+                                float arenaHalfSize) {
+    float closest = std::numeric_limits<float>::infinity();
+    const auto considerAxis = [&](float originCoord, float directionCoord) {
+        if (std::fabs(directionCoord) <= 0.0001f) {
+            return;
+        }
+        const float boundary = directionCoord > 0.0f ? arenaHalfSize : -arenaHalfSize;
+        const float distance = (boundary - originCoord) / directionCoord;
+        if (distance >= 0.0f) {
+            closest = std::min(closest, distance);
+        }
+    };
+
+    considerAxis(origin.x, direction.x);
+    considerAxis(origin.z, direction.z);
+    return closest;
+}
+
+float combatTraceVisualDistance(const sim::HitscanRay& ray,
+                                const sim::MovementEnvironment& environment) {
+    const sim::Vec3 direction = normalized(ray.direction);
+    const float rayDistance = std::max(ray.maxDistance, 0.0f);
+    if (rayDistance <= 0.0f || length(direction) <= 0.0001f) {
+        return 0.0f;
+    }
+
+    const float arenaHalfSize = environment.arenaHalfSize > 0.0f
+        ? environment.arenaHalfSize
+        : sim::defaults::kArenaHalfSize;
+    float visualDistance = std::min(rayDistance, std::max(16.0f, arenaHalfSize * 2.0f));
+
+    const float arenaDistance =
+        distanceToArenaBoundary2D(ray.origin, direction, arenaHalfSize);
+    if (std::isfinite(arenaDistance)) {
+        visualDistance = std::min(visualDistance, arenaDistance);
+    }
+
+    const float obstacleDistance =
+        sim::traceHitscanObstacleDistance(ray, environment.collisionBoxes);
+    if (obstacleDistance >= 0.0f) {
+        visualDistance = std::min(visualDistance, obstacleDistance);
+    }
+
+    return std::clamp(visualDistance,
+                      std::min(kMinCombatTraceVisualDistance, rayDistance),
+                      rayDistance);
 }
 
 Color teamTint(sim::TeamId team) {
@@ -1576,11 +1643,14 @@ void ClientRuntime::update(float dtSeconds, const InputHandler3D::InputState* in
         return;
     }
 
+    const sim::PlayerState localPlayerStateBeforePrediction = localPlayerState_;
     const sim::PlayerCommand command =
         makeCommand(*input, microsToSeconds(networkDtUs), ++commandSeq_);
     syncRuntime_.applyLocalPrediction(syncContext(), command, environment_, simConfig_);
     localPlayerVisual_->setSimState(localPlayerState_);
-    if (syncRuntime_.shouldPredictFireAttempt(syncContext(), *input)) {
+    if (syncRuntime_.shouldPredictFireAttempt(syncContext(),
+                                             command,
+                                             localPlayerStateBeforePrediction)) {
         recordCombatTrace(
             sim::buildRifleHitscan(localPlayerState_, command.yaw, command.pitch, simConfig_),
             false,
@@ -3129,10 +3199,12 @@ bool ClientRuntime::localPlayerAwaitingRespawn() const {
 
 void ClientRuntime::recordCombatTrace(const sim::HitscanRay& ray, bool authoritative, bool hit) {
     const Vector3 start{ray.origin.x, ray.origin.y, ray.origin.z};
+    const sim::Vec3 direction = normalized(ray.direction);
+    const float visualDistance = combatTraceVisualDistance(ray, environment_);
     const Vector3 end{
-        ray.origin.x + (ray.direction.x * ray.maxDistance),
-        ray.origin.y + (ray.direction.y * ray.maxDistance),
-        ray.origin.z + (ray.direction.z * ray.maxDistance)
+        ray.origin.x + (direction.x * visualDistance),
+        ray.origin.y + (direction.y * visualDistance),
+        ray.origin.z + (direction.z * visualDistance)
     };
     combatTraces_.emplace_back(
         LaserBeam3D(

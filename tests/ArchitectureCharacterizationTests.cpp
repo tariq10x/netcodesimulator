@@ -618,10 +618,28 @@ void testInputPollingRemainsSeparatedFromGameplayCommandShaping() {
 
     expect(clientRuntimeSource.find("syncRuntime_.buildCommand(syncContext(),") != std::string::npos &&
                clientRuntimeSource.find("syncRuntime_.applyLocalPrediction(syncContext(),") != std::string::npos &&
-               clientRuntimeSource.find("syncRuntime_.shouldPredictFireAttempt(syncContext(), *input)") != std::string::npos &&
+               clientRuntimeSource.find("const sim::PlayerState localPlayerStateBeforePrediction = localPlayerState_;") != std::string::npos &&
+               clientRuntimeSource.find("syncRuntime_.shouldPredictFireAttempt(syncContext(),") != std::string::npos &&
+               clientRuntimeSource.find("localPlayerStateBeforePrediction") != std::string::npos &&
                clientSyncHeader.find("InputHandler3D::toInputFrame(input)") != std::string::npos &&
                clientSyncHeader.find("InputHandler3D::toPlayerCommand(inputFrame,") != std::string::npos,
            "ClientRuntime should delegate gameplay command shaping and immediate prediction policy through ClientSyncRuntime");
+}
+
+void testCombatBeamRenderingRemainsConstantCost() {
+    const std::filesystem::path repoRoot = findRepoRoot();
+    const std::string laserBeamHeader = readTextFile(repoRoot / "include/LaserBeam3D.hpp");
+    const std::string clientRuntimeSource = readTextFile(repoRoot / "src/ClientRuntime.cpp");
+
+    expect(laserBeamHeader.find("DrawCylinderEx(start, end, radius, radius, 8") != std::string::npos &&
+               laserBeamHeader.find("DrawCylinderEx(start, end, radius * 0.4f, radius * 0.4f, 6") != std::string::npos &&
+               laserBeamHeader.find("DrawSphere(") == std::string::npos &&
+               laserBeamHeader.find("for (int step") == std::string::npos,
+           "LaserBeam3D should render combat beams with a fixed primitive count instead of range-scaled sphere chains");
+    expect(clientRuntimeSource.find("combatTraceVisualDistance(") != std::string::npos &&
+               clientRuntimeSource.find("distanceToArenaBoundary2D(") != std::string::npos &&
+               clientRuntimeSource.find("sim::traceHitscanObstacleDistance(ray, environment.collisionBoxes)") != std::string::npos,
+           "combat trace presentation should clamp visual beam length without changing the gameplay hitscan range");
 }
 
 void testRenderPresentationConsumesClientViewStateHandoff() {
@@ -875,6 +893,7 @@ int main() {
         testReplicationContractsRemainDistinctFromPresentationBundles();
         testPlatformAdaptersRemainNarrowlyScoped();
         testInputPollingRemainsSeparatedFromGameplayCommandShaping();
+        testCombatBeamRenderingRemainsConstantCost();
         testRenderPresentationConsumesClientViewStateHandoff();
         testHostJoinModeUsesComposedRuntime();
         testRecordingLifecycleRemainsOnSharedClientRuntimePath();

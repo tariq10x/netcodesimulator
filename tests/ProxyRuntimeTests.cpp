@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <exception>
 #include <iostream>
 #include <type_traits>
@@ -54,6 +55,14 @@ std::vector<net::Packet> filterPacketsByKind(const std::vector<net::Packet>& pac
         }
     }
     return filtered;
+}
+
+std::size_t countPacketsByKind(const std::vector<net::Packet>& packets,
+                               net::PacketKind kind) {
+    return static_cast<std::size_t>(
+        std::count_if(packets.begin(), packets.end(), [kind](const net::Packet& packet) {
+            return packet.header.kind == kind;
+        }));
 }
 
 template <typename Predicate>
@@ -181,10 +190,11 @@ ProxyDeterminismResult runDeterministicProxyCase() {
             packets.insert(packets.end(), next.begin(), next.end());
         }
         const auto stats = transport.aggregateStats(true);
+        const auto gameplayPacketCount = countPacketsByKind(packets, net::PacketKind::CommandBundle);
         return stats.receivedPackets >= 8u &&
                stats.queuedPackets == 0u &&
                stats.forwardedPackets + stats.droppedPackets >= 8u &&
-               packets.size() >= stats.forwardedPackets;
+               gameplayPacketCount >= stats.forwardedPackets;
     }, std::chrono::milliseconds(250));
     expect(settled, "deterministic proxy case should settle after ingress and duplicate delivery");
 

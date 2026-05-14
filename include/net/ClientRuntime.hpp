@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -441,6 +442,16 @@ struct ClientRuntimeTestAccess {
 
     static float firstCombatTraceThickness(const ClientRuntime& client) {
         return client.combatTraces_.front().beam.getThickness();
+    }
+
+    static float firstCombatTraceLength(const ClientRuntime& client) {
+        const LaserBeam3D& beam = client.combatTraces_.front().beam;
+        const Vector3 start = beam.getStart();
+        const Vector3 end = beam.getEnd();
+        const float dx = end.x - start.x;
+        const float dy = end.y - start.y;
+        const float dz = end.z - start.z;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     static std::uint32_t consumedCombatEventCount(const ClientRuntime& client) {

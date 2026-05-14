@@ -232,8 +232,11 @@ public:
     }
 
     bool shouldPredictFireAttempt(const ClientSyncContext& context,
-                                  const InputHandler3D::InputState& input) const {
-        return InputHandler3D::toPredictionFrame(input, context.predictionEnabled).firePressed;
+                                  const sim::PlayerCommand& command,
+                                  const sim::PlayerState& beforePrediction) const {
+        return context.predictionEnabled &&
+               command.has(sim::CommandButton::Fire) &&
+               sim::canFire(beforePrediction);
     }
 
     sim::PlayerCommand buildIdleCommand(const ClientSyncContext& context,
